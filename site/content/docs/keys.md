@@ -6,7 +6,7 @@ description = "In-memory keys, HSM and KMS keys, key rollover and the mTLS ident
 The library does everything around a private-key operation (XMLDSig and CMS
 structures, ConcatKDF, key unwrap, content decryption). The key only signs
 prepared bytes or performs one
-[`KeyOp`](https://docs.rs/asx-rs/latest/asx/enum.KeyOp.html), so it can live
+[`KeyOp`](https://docs.rs/asx/latest/asx/enum.KeyOp.html), so it can live
 in an HSM or KMS.
 
 ## Certificates
@@ -47,7 +47,7 @@ signing, decryption and TLS (B Kap. 2.3.4.4).
 ## HSM and KMS: implementing `Signer` and `Decrypter`
 
 Both traits are object-safe and async, returning a
-[`BoxFuture`](https://docs.rs/asx-rs/latest/asx/type.BoxFuture.html). An error
+[`BoxFuture`](https://docs.rs/asx/latest/asx/type.BoxFuture.html). An error
 fails the operation with `ErrorKind::Backend`.
 
 | Trait | Method | Contract |

@@ -600,7 +600,7 @@ fn write_part_info(
 /// embedding in a `wsse:BinarySecurityToken` with `ValueType="...#X509PKIPathv1"`.
 ///
 /// RFC 3820 defines PKIPath as `SEQUENCE SIZE (1..MAX) OF Certificate`.  For
-/// single-certificate chains — the typical case for asx-rs — this is a SEQUENCE
+/// single-certificate chains — the typical case for asx — this is a SEQUENCE
 /// wrapping exactly one DER-encoded certificate.
 pub fn build_pkipath_der(cert_der: &[u8]) -> Vec<u8> {
     let len = cert_der.len();

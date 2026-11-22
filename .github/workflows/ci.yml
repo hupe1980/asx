@@ -45,7 +45,7 @@ jobs:
         with:
           tool: cargo-hack@0.6
       # No default features, each feature alone, and all features.
-      - run: cargo hack check --locked -p asx-rs --each-feature --lib --tests
+      - run: cargo hack check --locked -p asx --each-feature --lib --tests
         env:
           RUSTFLAGS: -D warnings
 

@@ -5,4 +5,4 @@ edition = "2024"
 publish = false
 
 [dependencies]
-asx-rs = { path = "..", features = ["test-util"] }
+asx = { path = "..", features = ["test-util"] }

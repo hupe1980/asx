@@ -1,12 +1,12 @@
-# asx-rs
+# asx
 
 **AS2 and AS4 B2B messaging for Rust: async, memory-safe, and strict by default.**
 
-[![Crates.io](https://img.shields.io/crates/v/asx-rs.svg)](https://crates.io/crates/asx-rs)
-[![Docs.rs](https://docs.rs/asx-rs/badge.svg)](https://docs.rs/asx-rs)
-[![License](https://img.shields.io/crates/l/asx-rs.svg)](#license)
+[![Crates.io](https://img.shields.io/crates/v/asx.svg)](https://crates.io/crates/asx)
+[![Docs.rs](https://docs.rs/asx/badge.svg)](https://docs.rs/asx)
+[![License](https://img.shields.io/crates/l/asx.svg)](#license)
 
-`asx-rs` implements [AS2 (RFC 4130)](https://www.rfc-editor.org/rfc/rfc4130) and
+`asx` implements [AS2 (RFC 4130)](https://www.rfc-editor.org/rfc/rfc4130) and
 [AS4 (OASIS ebMS3 / eDelivery)](https://docs.oasis-open.org/ebxml-msg/ebms/v3.0/profiles/AS4-profile/v1.0/)
 for the networks that use them: the German energy market (BDEW AS4-Profil 1.2),
 Peppol, eDelivery AS4 1.15, ENTSOG 3.6, and classic AS2 trading partners.
@@ -15,10 +15,10 @@ It is an **embeddable library**, not a gateway: no container, no database, no
 JVM. You get the protocol and the cryptography; storage, keys and deployment
 stay yours.
 
-📖 **[Documentation](https://hupe1980.github.io/asx-rs)** ·
-🦀 **[API reference](https://docs.rs/asx-rs)** ·
+📖 **[Documentation](https://hupe1980.github.io/asx)** ·
+🦀 **[API reference](https://docs.rs/asx)** ·
 📋 **[Changelog](CHANGELOG.md)** ·
-🔀 **[Migrating](https://hupe1980.github.io/asx-rs/docs/migration/)**
+🔀 **[Migrating](https://hupe1980.github.io/asx/docs/migration/)**
 
 ---
 
@@ -26,11 +26,10 @@ stay yours.
 
 ```toml
 [dependencies]
-asx-rs = "0.19"
+asx = "0.20"
 ```
 
-The package is `asx-rs`; the library is `asx`. Features are additive and
-none changes security behaviour:
+Features are additive and none changes security behaviour:
 
 | Flag | Enables | Default |
 |------|---------|---------|
@@ -191,7 +190,7 @@ the old and the new key side by side.
   `HttpClient` are yours to implement; `asx::testkit` has the conformance
   suites. No retry scheduler, storage backend or listener is built in.
 
-See the **[security model](https://hupe1980.github.io/asx-rs/docs/security/)**
+See the **[security model](https://hupe1980.github.io/asx/docs/security/)**
 for trust boundaries and what the library does *not* protect against, and the
 **[threat model](THREAT_MODEL.md)** (also on docs.rs as `asx::threat_model`)
 for every known threat class with its status and evidence.
@@ -219,7 +218,7 @@ for every known threat class with its status and evidence.
 
 Independent witnesses (phase4, Holodeck B2B, xmlsec1, the openssl CLI, a
 production Peppol SMP signature, Redis) are listed on the
-**[conformance page](https://hupe1980.github.io/asx-rs/docs/conformance/)**.
+**[conformance page](https://hupe1980.github.io/asx/docs/conformance/)**.
 
 Not supported: AS4 pull, split/join, Two-Way MEPs, sending asynchronous AS2
 MDNs, streaming AS2, LDAP CRL distribution points, a revocation cache shared

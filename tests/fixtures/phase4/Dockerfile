@@ -1,4 +1,4 @@
-# asx-phase4-peer: phase4 4.8.1 as an AS4 counterparty for the asx-rs interop job.
+# asx-phase4-peer: phase4 4.8.1 as an AS4 counterparty for the asx interop job.
 # Base images are pinned by manifest-list digest (multi-arch). The build stage
 # runs on the build platform: bytecode is architecture-neutral, no emulation.
 FROM --platform=$BUILDPLATFORM maven:3.9.11-eclipse-temurin-21@sha256:6fdc855a6ed81d288ca7ca37ac6ff5e9308b612485c0801d70b25a858c83d237 AS build
@@ -17,7 +17,7 @@ ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="asx-phase4-peer" \
       org.opencontainers.image.version="${PEER_REVISION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.source="https://github.com/hupe1980/asx-rs" \
+      org.opencontainers.image.source="https://github.com/hupe1980/asx" \
       org.opencontainers.image.licenses="Apache-2.0" \
       io.asx.phase4.version="4.8.1"
 RUN groupadd --system --gid 10001 peer \

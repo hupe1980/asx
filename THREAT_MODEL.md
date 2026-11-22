@@ -1,16 +1,16 @@
 # Threat model
 
-This document defines what asx-rs is meant to defend against, what it trusts and where it
+This document defines what asx is meant to defend against, what it trusts and where it
 stops. It lists every known threat class with its status and evidence, including the open
-ones. Report a suspected vulnerability privately as described in [SECURITY.md](https://github.com/hupe1980/asx-rs/blob/main/SECURITY.md).
+ones. Report a suspected vulnerability privately as described in [SECURITY.md](https://github.com/hupe1980/asx/blob/main/SECURITY.md).
 
 ## Release status
 
-This describes asx-rs 0.18.0, a pre-release. The model was built with
+This describes asx 0.18.0, a pre-release. The model was built with
 [ThreatSpec](https://github.com/hupe1980/spec-kit-threatspec) (STRIDE per element). Every
 status below is checked against the code and its tests.
 
-asx-rs is a library. It parses MIME, SOAP, XML and CMS straight off the network inside the
+asx is a library. It parses MIME, SOAP, XML and CMS straight off the network inside the
 embedding process, with `#![forbid(unsafe_code)]`. One `Profile` per network fixes every
 security setting; `build()` validates the whole configuration once; a receive runs one fixed
 verification order (size, structure, signer, signature, recipient, revocation, freshness,
@@ -38,7 +38,7 @@ It does **not**, in this release:
 - **A network member**: the holder of a valid certificate of the network's CA (SM-PKI, Peppol
   PKI) who is not a configured partner, or who claims another party's identity.
 - **A rogue partner**: a configured partner, compromised or malicious, with its genuine keys.
-- **A network attacker** on the path between asx-rs and a partner, a CRL distribution point, an
+- **A network attacker** on the path between asx and a partner, a CRL distribution point, an
   OCSP responder or an SMP.
 - **A hostile service**: the CRL, OCSP, SMP or DNS endpoint named by a certificate or a lookup,
   under the attacker's control.
@@ -105,8 +105,8 @@ the built-in `HttpClient`; an embedder that supplies its own client owns those g
 
 Ids are stable and never reused. The fields are:
 
-- **Disposition**: `mitigate` (asx-rs is designed to prevent it), `embedder` (the embedder
-  must handle it, with help from asx-rs), `accept` (a recorded risk).
+- **Disposition**: `mitigate` (asx is designed to prevent it), `embedder` (the embedder
+  must handle it, with help from asx), `accept` (a recorded risk).
 - **Status**: `mitigated` only with test evidence and no known open variant; `partial` when
   variants are open (listed under Open variants); `open` when no control covers it;
   `documented` when the embedder owns it or the risk is accepted and described.
@@ -130,7 +130,7 @@ Ids are stable and never reused. The fields are:
 | A-13 | DNS rebinding | A host validated as public resolves to a private address at connect time. The connector resolves once per new connection, checks every answer and connects to the address it checked; pooled connections exist only through it. | high | mitigate | partial | `src/transport/connector.rs::tests::an_unpinned_loopback_host_is_refused`, `::a_pinned_host_reaches_its_address_and_nothing_else_does`; `src/transport/egress.rs` (`is_private_ip`) |
 | A-14 | XML bombs and entity expansion | An oversized, deep, wide or entity-expanding document exhausts memory or CPU before authentication. One parser with per-class limits on bytes, nodes, depth and attributes; `DOCTYPE` and every `<!` declaration refused. | high | mitigate | mitigated | `tests/xml_limits.rs::push_envelope_limits`, `::sync_signal_limits`, `::receipt_limits`, `::error_signal_limits`, `::smp_response_limits`, `::sbdh_document_limits`, `::encrypted_payload_limits` |
 | A-15 | Oversized bodies and compression bombs | An oversized body, or a small gzip or zlib part that expands without bound, exhausts memory. The body limit answers 413 before parsing; decompression runs after authentication and stops at `Profile::max_message_bytes` for the whole message (one budget across its parts). | medium | mitigate | mitigated | `tests/as4_receive.rs::oversized_body_is_413`; `tests/as2_receive.rs::oversized_body_is_413`; `src/crypto/compression.rs::tests::a_bomb_is_refused_at_the_limit` |
-| A-16 | MIME and HTTP header ambiguity | A repeated header, an undeclared or missing part, or a boundary trick makes asx-rs and a signer or intermediary see different content. A repeated AS2 header the receiver acts on, a repeated AS4 `Content-Type`, a MIME part with a repeated `Content-ID` or `Content-Type`, a signed AS2 entity with a repeated `Content-Type` or `Content-Transfer-Encoding`, and any part property repeated in one `eb:PartInfo` are refused; the payload set must equal the signed `eb:PartInfo` set. | high | mitigate | mitigated | `tests/as2_receive.rs::a_repeated_as2_header_is_400_and_never_delivered`; `tests/as4_ebms_adversarial.rs::a_repeated_content_type_header_is_refused`, `::a_repeated_mime_part_header_is_refused`; `src/crypto/as2_smime.rs::tests::a_repeated_entity_header_is_refused`; `tests/as4_swa_encryption_inbound.rs::undeclared_mime_part_is_refused`, `::declared_part_missing_is_refused`, `::plaintext_xml_mentioning_encrypted_data_is_refused`; `src/as4/parser.rs::duplicate_four_corner_properties_are_rejected`; `tests/as2_receive_mdn.rs::duplicate_disposition_fields_are_indeterminate` |
+| A-16 | MIME and HTTP header ambiguity | A repeated header, an undeclared or missing part, or a boundary trick makes asx and a signer or intermediary see different content. A repeated AS2 header the receiver acts on, a repeated AS4 `Content-Type`, a MIME part with a repeated `Content-ID` or `Content-Type`, a signed AS2 entity with a repeated `Content-Type` or `Content-Transfer-Encoding`, and any part property repeated in one `eb:PartInfo` are refused; the payload set must equal the signed `eb:PartInfo` set. | high | mitigate | mitigated | `tests/as2_receive.rs::a_repeated_as2_header_is_400_and_never_delivered`; `tests/as4_ebms_adversarial.rs::a_repeated_content_type_header_is_refused`, `::a_repeated_mime_part_header_is_refused`; `src/crypto/as2_smime.rs::tests::a_repeated_entity_header_is_refused`; `tests/as4_swa_encryption_inbound.rs::undeclared_mime_part_is_refused`, `::declared_part_missing_is_refused`, `::plaintext_xml_mentioning_encrypted_data_is_refused`; `src/as4/parser.rs::duplicate_four_corner_properties_are_rejected`; `tests/as2_receive_mdn.rs::duplicate_disposition_fields_are_indeterminate` |
 | A-17 | Algorithm downgrade | A message or receipt declares another algorithm (`rsa-1_5`, `rsa-oaep-mgf1p`, CBC, another KDF, digest or curve, a DER ECDSA value) and it is negotiated instead of refused. The inbound algorithm tuple must equal the partner's profile suite before any key is used (eDelivery AS4 1.15 §3.2.6; BDEW AS4-Profil 1.2 Kap. 2.2.6.2.2). | high | mitigate | mitigated | `tests/as4_swa_encryption_inbound.rs::suite_outside_partner_set_is_rejected_before_unwrap`; `tests/wssec_key_transport_identifiers.rs`; `tests/wssec_ecdsa_signature_value.rs::wrong_length_rejected`; `tests/as4_receipt_verification.rs::ecdsa_receipt_verifies_as_nrr_evidence_and_der_is_rejected` |
 | A-18 | Revocation fail-open | A revoked certificate is accepted because its status could not be obtained, did not verify or had no source. Under `bdew()`: CRL only, `nextUpdate` required, a certificate without a distribution point refused, a CA distrusted when its CRL is past `nextUpdate` or unobtainable for 72 h (RzÜ AS4 2.6 Kap. 5.4). CRLs are verified for signature, scope, completeness and freshness (RFC 5280 §4.2.1.13, §5.2.5). | high | mitigate | partial | `tests/revocation.rs::bdew_refuses_when_the_crl_does_not_verify`, `::bdew_refuses_a_chain_certificate_without_a_distribution_point`, `::bdew_refuses_a_sub_ca_listed_in_the_indirect_root_crl`, `::a_revoked_crl_is_final_whatever_ocsp_says`, `::a_certificate_without_any_source_follows_the_profile`; `tests/revocation_openssl_oracle.rs`; `src/revocation/tests.rs` |
 | A-19 | Key material in output | Private keys appear in `Debug`, errors, logs, spans or metrics. Every secret-bearing type writes its `Debug` by hand; `KeyPair` prints its certificate only and zeroizes on drop; telemetry carries no payload, key or certificate subject. | high | mitigate | mitigated | `tests/secret_debug_redaction.rs::key_pair_debug_prints_the_certificate_only`, `::parties_builders_clients_and_inbounds_redact_their_keys`, `::key_errors_never_echo_the_key`; `tests/telemetry_contract.rs`; `tests/external_keys.rs::no_private_key_leaves_keys_rs` |
@@ -141,9 +141,9 @@ Ids are stable and never reused. The fields are:
 | A-24 | Supply chain | A compromised or vulnerable dependency (OpenSSL through C FFI, the RustCrypto crates, the XML and DNS crates) or a hijacked release credential reaches embedders. | medium | mitigate | partial | `Cargo.lock` with `--locked` builds and `cargo deny check advisories licenses bans sources` (`.github/workflows/ci.yml`, `deny.toml`); crates.io trusted publishing from the CI-gated workflow (`.github/workflows/release.yml`) |
 | A-25 | Encryption envelope ambiguity | Two `EncryptedData` for one `cid:`, a dangling or orphan `DataReference`, a second `EncryptedKey`, a `KeyInfo` naming another key, an `xenc:` element outside the targeted `wsse:Security`, or another `Type` or transform makes the receiver decrypt something other than the signed parts (WSS SwA 1.1.1 §5.5). Every defect is refused before a key is used. | high | mitigate | mitigated | `tests/as4_swa_encryption_inbound.rs::two_encrypted_data_for_one_cid`, `::dangling_data_reference`, `::orphan_encrypted_data`, `::second_encrypted_key`, `::key_info_naming_another_key`, `::xenc_outside_the_security_header`, `::type_other_than_content_only`, `::transform_list_not_exactly_the_ciphertext_transform` |
 | A-26 | Unencrypted or sniffed parts | A plaintext part is delivered under a profile that requires encryption, or a part is "decrypted" because its bytes mention `xenc:EncryptedData`. Decryption is driven only by the security header; every declared part must be encrypted. | high | mitigate | mitigated | `tests/as4_swa_encryption_inbound.rs::part_without_encrypted_data`, `::plaintext_xml_mentioning_encrypted_data_is_refused` |
-| A-27 | Evidence over ciphertext | Signature digests taken over ciphertext make receipts useless as evidence about the content. asx-rs compresses, signs, then encrypts; `cid:` digests cover the pre-encryption bytes and are checked after decryption. | high | mitigate | mitigated | `tests/as4_swa_encryption_shape.rs::cid_digests_cover_pre_encryption_bytes`; `tests/as4_receipt_verification.rs::encrypted_send_receipt_echoes_plaintext_digests`; `tests/as4_swa_encryption_inbound.rs::cid_digest_mismatch_over_the_decrypted_bytes`; `tests/interop_phase4_encryption.rs::tampered_from_phase4_is_refused` |
+| A-27 | Evidence over ciphertext | Signature digests taken over ciphertext make receipts useless as evidence about the content. asx compresses, signs, then encrypts; `cid:` digests cover the pre-encryption bytes and are checked after decryption. | high | mitigate | mitigated | `tests/as4_swa_encryption_shape.rs::cid_digests_cover_pre_encryption_bytes`; `tests/as4_receipt_verification.rs::encrypted_send_receipt_echoes_plaintext_digests`; `tests/as4_swa_encryption_inbound.rs::cid_digest_mismatch_over_the_decrypted_bytes`; `tests/interop_phase4_encryption.rs::tampered_from_phase4_is_refused` |
 | A-28 | Content key and nonce reuse | A content key or an AES-GCM nonce repeats across messages or parts, or the implicit-rejection key is predictable. One fresh key per message, one fresh 96-bit nonce per part (BSI TR-03116-3 §9.2.1); without randomness the rejection key fails closed (an empty key content decryption refuses). | medium | mitigate | mitigated | `src/crypto/wssec/xmlenc/mod.rs::tests::content_keys_nonces_and_rejection_keys_are_fresh`, `::an_empty_rejection_key_fails_uniformly` |
-| A-29 | XML attachment digest divergence | For an uncompressed XML-typed attachment, asx-rs digests raw octets where WSS SwA 1.1.1 §5.4.2 says Exclusive C14N; a foreign sender's digest then disagrees. Every preset compresses outbound, so only inbound uncompressed XML parts are affected. | low | mitigate | open | none (no foreign witness yet) |
+| A-29 | XML attachment digest divergence | For an uncompressed XML-typed attachment, asx digests raw octets where WSS SwA 1.1.1 §5.4.2 says Exclusive C14N; a foreign sender's digest then disagrees. Every preset compresses outbound, so only inbound uncompressed XML parts are affected. | low | mitigate | open | none (no foreign witness yet) |
 | A-30 | Partner impersonation over TLS | An on-path attacker impersonates the partner's MSH because the server certificate is not verified against the configured anchors, host name and EKU. Under `bdew()` the client trusts only the builder's SM-PKI anchors, checks the DNS name (RFC 6125, no wildcards) and `serverAuth`, sends SNI and presents the local TLS identity (BDEW AS4-Profil 1.2 Kap. 2.2.6.1, 2.3.4.4). | critical | mitigate | mitigated | `tests/egress_mtls.rs::bdew_mutual_tls_with_brainpool_delivers_and_presents_the_tls_identity`, `::a_server_certificate_from_an_unknown_ca_is_refused`, `::a_server_certificate_for_another_host_is_refused`, `::a_server_certificate_without_server_auth_is_refused`; `tests/interop_openssl_tls_oracle.rs::openssl_s_server_accepts_our_brainpool_client_certificate` |
 | A-31 | Revoked server certificate | A partner TLS certificate revoked in the SM-PKI is still used. The server chain is checked through the client's revocation validator (with the three-day rule) before the request is written. | high | mitigate | mitigated | `tests/egress_mtls.rs::a_revoked_server_certificate_is_refused_before_writing` |
 | A-32 | TLS downgrade | The handshake negotiates a protocol version, cipher suite, group or signature scheme outside BSI TR-03116-3 §4 under `bdew()`. | high | mitigate | mitigated | `tests/egress_mtls.rs::a_server_outside_tr_03116_is_refused`, `::bdew_mutual_tls_over_tls_1_2`; `src/transport/tls.rs::tests::bdew_policy_applies_on_the_linked_openssl`, `::bdew_forbids_wildcards` |
@@ -170,7 +170,7 @@ Ids are stable and never reused. The fields are:
   - `MemoryDedup` is not durable: replay protection across a restart needs a durable store.
   - AS2 carries no signed timestamp, so an AS2 message replayed after the store dropped its
     key is new.
-- **A-12, A-13** An `HttpClient` the embedder supplies is not filtered by asx-rs.
+- **A-12, A-13** An `HttpClient` the embedder supplies is not filtered by asx.
 - **A-17** AS2 accepts RSA PKCS#1 v1.5 key transport and AES-CBC (128, 192, 256), which RFC 4130
   partners send; its answers are uniform (A-04).
 - **A-18**
@@ -179,7 +179,7 @@ Ids are stable and never reused. The fields are:
   - The SMP signer's revocation is soft-fail: a status that cannot be obtained is accepted.
   - The distrust of a CA is not persisted across restarts.
 - **A-21** Coverage-guided fuzzing does not run in CI; the fuzz tests are smoke tests.
-- **A-22** BDXL answers are not DNSSEC-validated by asx-rs; validation is the resolver's.
+- **A-22** BDXL answers are not DNSSEC-validated by asx; validation is the resolver's.
 - **A-23** `is_retryable` is false for codes other than `EBMS:0202`, so an injected
   `eb:Error` can make a sender stop retrying; keep the message and resend it (duplicates are
   detected) before dead-lettering.
@@ -217,9 +217,9 @@ Ids are stable and never reused. The fields are:
 - **AS4 pull** (ebMS3 One-Way/Pull).
 - **AS4 split/join** (ebMS3 Part 2): a fragment is refused, never buffered or delivered
   (`tests/as4_ebms_adversarial.rs::fragment_message_is_refused`).
-- **Asynchronous AS2 MDN delivery**: answered with a synchronous MDN; asx-rs never posts to
+- **Asynchronous AS2 MDN delivery**: answered with a synchronous MDN; asx never posts to
   the `Receipt-Delivery-Option` URL
   (`tests/as2_receive.rs::an_async_mdn_request_is_answered_synchronously`).
 - **Streaming receive**: payloads are buffered up to the body limit (A-15).
 
-Report a suspected vulnerability privately as described in [SECURITY.md](https://github.com/hupe1980/asx-rs/blob/main/SECURITY.md).
+Report a suspected vulnerability privately as described in [SECURITY.md](https://github.com/hupe1980/asx/blob/main/SECURITY.md).

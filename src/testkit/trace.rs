@@ -15,7 +15,7 @@
 //! ```
 //!
 //! The subscriber is installed for the current thread only, so parallel tests
-//! do not see each other's spans. `asx-rs` carries the caller's dispatcher and
+//! do not see each other's spans. `asx` carries the caller's dispatcher and
 //! span onto its crypto pool, so work it moves off-thread is captured too.
 
 use std::collections::BTreeMap;

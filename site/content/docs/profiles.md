@@ -4,7 +4,7 @@ description = "What each network preset fixes, partner quirks, and what build() 
 aliases = ["/docs/interop/"]
 +++
 
-A [`Profile`](https://docs.rs/asx-rs/latest/asx/struct.Profile.html) is the
+A [`Profile`](https://docs.rs/asx/latest/asx/struct.Profile.html) is the
 only source of security and wire settings. It is opaque, has no `Default` and
 no method that loosens a value: pick the preset your network publishes.
 
@@ -113,7 +113,7 @@ rate limits are tower layers on the route (for example
 
 ## Partners and quirks
 
-A [`Quirk`](https://docs.rs/asx-rs/latest/asx/enum.Quirk.html) tolerates one
+A [`Quirk`](https://docs.rs/asx/latest/asx/enum.Quirk.html) tolerates one
 **absent** element from one partner, never a wrong value. Every acceptance it
 enables is recorded in the audit record's `quirks`; a quirk of the other
 protocol is refused by `build()`.

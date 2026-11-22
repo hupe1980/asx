@@ -1,4 +1,4 @@
-# asx-rs tasks — run `just` to list them. `just ci` runs locally what the CI
+# asx tasks — run `just` to list them. `just ci` runs locally what the CI
 # jobs check, features, msrv and deny run; `just interop` is the CI interop job.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
@@ -28,7 +28,7 @@ lint:
 
 # No default features, each feature alone, all features (needs cargo-hack).
 features:
-    RUSTFLAGS='-D warnings' CARGO_TARGET_DIR=target/features cargo hack check --locked -p asx-rs --each-feature --lib --tests
+    RUSTFLAGS='-D warnings' CARGO_TARGET_DIR=target/features cargo hack check --locked -p asx --each-feature --lib --tests
 
 # Build on the MSRV floor (Cargo.toml rust-version).
 msrv:

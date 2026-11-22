@@ -152,12 +152,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "asx-rs"
-version = "0.19.0"
+name = "asx"
+version = "0.20.0"
 dependencies = [
  "aes-gcm",
  "aes-kw",
- "asx-rs",
+ "asx",
  "axum",
  "base64 0.22.1",
  "bytes",
@@ -4296,7 +4296,7 @@ dependencies = [
 name = "xtask"
 version = "0.4.0"
 dependencies = [
- "asx-rs",
+ "asx",
 ]
 
 [[package]]

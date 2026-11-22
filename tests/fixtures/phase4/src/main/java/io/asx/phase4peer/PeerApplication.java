@@ -39,7 +39,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 /**
- * asx-phase4-peer: phase4 as an AS4 counterparty for the asx-rs interop job.
+ * asx-phase4-peer: phase4 as an AS4 counterparty for the asx interop job.
  * <ul>
  * <li>{@code POST /as4/{variant}} - phase4's {@link AS4RequestHandler} with the variant's crypto
  * factories, a P-Mode resolver building from the profile's own template and an incoming profile

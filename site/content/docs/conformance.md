@@ -4,7 +4,7 @@ description = "Which independent implementation witnesses which part of asx, and
 +++
 
 These checks run asx against implementations written by other people. The
-[gate table in RELEASING.md](https://github.com/hupe1980/asx-rs/blob/main/RELEASING.md#ci-workflows)
+[gate table in RELEASING.md](https://github.com/hupe1980/asx/blob/main/RELEASING.md#ci-workflows)
 says which block a merge or a release.
 
 ## Which oracle witnesses what

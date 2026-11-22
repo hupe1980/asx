@@ -1,13 +1,13 @@
 # Security Policy
 
-`asx-rs` verifies signatures, decrypts payloads and accepts messages from
+`asx` verifies signatures, decrypts payloads and accepts messages from
 counterparties it does not control, so a flaw in it can be a flaw in an access
 point. Please report one privately.
 
 ## Reporting a vulnerability
 
 Use GitHub's private vulnerability reporting:
-<https://github.com/hupe1980/asx-rs/security/advisories/new>.
+<https://github.com/hupe1980/asx/security/advisories/new>.
 Do not open a public issue or pull request for a suspected vulnerability.
 
 Please include the affected version, the feature flags and profile in use, and
