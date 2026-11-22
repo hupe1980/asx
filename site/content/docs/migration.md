@@ -1,7 +1,16 @@
 +++
 title = "Migrating"
-description = "Every 0.18 to 0.19, 0.17 to 0.18, 0.16 to 0.17 and 0.15 to 0.16 wire change and API replacement, grouped by task."
+description = "Every 0.19 to 0.20, 0.18 to 0.19, 0.17 to 0.18, 0.16 to 0.17 and 0.15 to 0.16 wire change and API replacement, grouped by task."
 +++
+
+## 0.19 to 0.20: package `asx`
+
+No wire or API change. The package is `asx`; `asx-rs` receives no further releases.
+
+| Change | 0.19 | 0.20 |
+|---|---|---|
+| **Dependency** | `asx-rs = "0.19"` | `asx = "0.20"` |
+| **Imports** | `use asx::…` | unchanged |
 
 ## 0.18 to 0.19: decryption keys by key
 

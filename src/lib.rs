@@ -1,9 +1,8 @@
 //! AS2 and AS4 messaging. Start at [`as4::As4::builder`] or
 //! [`as2::As2::builder`].
 //!
-//! `asx-rs` is an async, memory-safe library for the AS2 (RFC 4130) and AS4
-//! (OASIS ebMS3 + eDelivery) EDI transport protocols. The crate is published
-//! as `asx-rs`; the library is imported as `asx`.
+//! `asx` is an async, memory-safe library for the AS2 (RFC 4130) and AS4
+//! (OASIS ebMS3 + eDelivery) EDI transport protocols.
 //!
 //! A client is built once from a [`Profile`] (every security and wire setting
 //! of a network, cited), the [`LocalParty`], the [`Partner`]s and the trust

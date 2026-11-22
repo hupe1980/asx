@@ -191,8 +191,8 @@ cannot change an outcome
 
 ## What the library does not protect against
 
-The [threat model](https://docs.rs/asx-rs/latest/asx/threat_model/)
-(`asx::threat_model`; [THREAT_MODEL.md](https://github.com/hupe1980/asx-rs/blob/main/THREAT_MODEL.md)
+The [threat model](https://docs.rs/asx/latest/asx/threat_model/)
+(`asx::threat_model`; [THREAT_MODEL.md](https://github.com/hupe1980/asx/blob/main/THREAT_MODEL.md)
 in the repository) lists every known threat class with its status and
 evidence, open ones included. The main limits:
 

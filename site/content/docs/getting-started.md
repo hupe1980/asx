@@ -1,6 +1,6 @@
 +++
 title = "Getting started"
-description = "Install asx-rs, send and receive AS4 and AS2 messages, and handle errors."
+description = "Install asx, send and receive AS4 and AS2 messages, and handle errors."
 aliases = ["/docs/reliability/"]
 +++
 
@@ -8,10 +8,10 @@ aliases = ["/docs/reliability/"]
 
 ```toml
 [dependencies]
-asx-rs = "0.19"
+asx = "0.20"
 ```
 
-The package is `asx-rs`; the library is `asx`. Features are additive and none
+The package is `asx`; the library is `asx`. Features are additive and none
 changes what is checked:
 
 | Feature | Enables | Default |
@@ -23,7 +23,7 @@ changes what is checked:
 | `metrics` | counters and histograms through the [`metrics`](https://docs.rs/metrics) facade | no |
 | `test-util` | `asx::testkit` (see [Testing](@/docs/testing.md)); `[dev-dependencies]` only | no |
 
-Without `http-client`, pass your own [`HttpClient`](https://docs.rs/asx-rs/latest/asx/trait.HttpClient.html)
+Without `http-client`, pass your own [`HttpClient`](https://docs.rs/asx/latest/asx/trait.HttpClient.html)
 to `Builder::http_client`.
 
 ## Runtime
@@ -97,7 +97,7 @@ fn bdew_partner(sig_pem: &[u8], enc_pem: &[u8]) -> asx::Result<Partner> {
 
 ## Receive in axum
 
-`As4::inbound(dedup, handler)` returns an [`Inbound`](https://docs.rs/asx-rs/latest/asx/struct.Inbound.html)
+`As4::inbound(dedup, handler)` returns an [`Inbound`](https://docs.rs/asx/latest/asx/struct.Inbound.html)
 tower `Service`; mount it with `route_service`:
 
 ```rust
@@ -152,7 +152,7 @@ async fn send_po(partner: Partner, key: KeyPair, ca: Certificate, x12: Vec<u8>) 
 
 ## Errors
 
-There is one [`Error`](https://docs.rs/asx-rs/latest/asx/struct.Error.html):
+There is one [`Error`](https://docs.rs/asx/latest/asx/struct.Error.html):
 
 | Method | Answers |
 |---|---|

@@ -1,4 +1,4 @@
-# Dependency policy for asx-rs, checked by `just deny` and the CI `deny` job.
+# Dependency policy for asx, checked by `just deny` and the CI `deny` job.
 #
 # Change rule: adding a licence to `allow` names the crate that needs it in the
 # pull request; adding an advisory `ignore` carries a reason and the condition

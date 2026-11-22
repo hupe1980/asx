@@ -6,9 +6,9 @@ description = "Implementing a durable DedupStore and AuditSink, and checking the
 The library keeps no state between requests. Two stores are yours, each a
 trait with a conformance suite in `asx::testkit`:
 
-- **[`DedupStore`](https://docs.rs/asx-rs/latest/asx/trait.DedupStore.html)**
+- **[`DedupStore`](https://docs.rs/asx/latest/asx/trait.DedupStore.html)**
   decides whether an inbound message is new;
-- **[`AuditSink`](https://docs.rs/asx-rs/latest/asx/trait.AuditSink.html)**
+- **[`AuditSink`](https://docs.rs/asx/latest/asx/trait.AuditSink.html)**
   keeps the evidence of every exchange leg.
 
 ## Duplicate detection: claim, then accept or abandon

@@ -1,4 +1,4 @@
-# Releasing asx-rs
+# Releasing asx
 
 Two workflows, mirrored by two `just` recipes:
 
@@ -42,12 +42,12 @@ Docker and `openssl` for `just interop`, `zola` for `just site`.
 4. Tag and push:
 
    ```bash
-   git tag -s vX.Y.Z -m "asx-rs X.Y.Z" && git push origin vX.Y.Z
+   git tag -s vX.Y.Z -m "asx X.Y.Z" && git push origin vX.Y.Z
    ```
 
 `release.yml` then runs CI for the tagged commit, checks that the tag equals
 `v` + the `Cargo.toml` version and that `CHANGELOG.md` has a `## [X.Y.Z]`
-section, publishes `asx-rs` through crates.io Trusted
+section, publishes `asx` through crates.io Trusted
 Publishing (`rust-lang/crates-io-auth-action`; no stored token), and creates the
 GitHub release with that CHANGELOG section as its notes.
 
@@ -58,8 +58,8 @@ version — fix forward with X.Y.Z+1.
 
 ## Owner setup (once)
 
-- crates.io → `asx-rs` → Settings → Trusted Publishing: GitHub publisher,
-  owner `hupe1980`, repository `asx-rs`, workflow `release.yml`, environment
+- crates.io → `asx` → Settings → Trusted Publishing: GitHub publisher,
+  owner `hupe1980`, repository `asx`, workflow `release.yml`, environment
   `crates-io`.
 - GitHub → Settings → Environments → `crates-io`: a required reviewer, only
   `v*` tags.

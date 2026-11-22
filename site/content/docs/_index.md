@@ -1,13 +1,13 @@
 +++
 title = "Documentation"
-description = "Guides for embedding AS2 and AS4 messaging with asx-rs."
+description = "Guides for embedding AS2 and AS4 messaging with asx."
 sort_by = "title"
 template = "section.html"
 page_template = "page.html"
 aliases = ["/docs/architecture/"]
 +++
 
-Guides for embedding `asx-rs` in a service you operate. They assume you know
+Guides for embedding `asx` in a service you operate. They assume you know
 AS2 or AS4 and cover how this crate implements it: what is fixed, where the
 trust boundaries are, and what you decide.
 
@@ -22,4 +22,4 @@ trust boundaries are, and what you decide.
 9. [Migrating](@/docs/migration.md) from 0.15, 0.16 or 0.17.
 
 Every Rust sample here is compiled in CI. For type-level detail see the
-[API documentation](https://docs.rs/asx-rs).
+[API documentation](https://docs.rs/asx).

@@ -23,7 +23,7 @@ BUDGET=161
 committed=tests/public-api.txt
 failed=0
 
-current=$(cargo +nightly public-api -sss --features as2,as4,http-client,peppol,metrics -p asx-rs 2>/dev/null)
+current=$(cargo +nightly public-api -sss --features as2,as4,http-client,peppol,metrics -p asx 2>/dev/null)
 if [ "${1:-}" = "--update" ]; then
     printf '%s\n' "$current" >"$committed"
 fi

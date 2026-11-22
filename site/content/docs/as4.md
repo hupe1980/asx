@@ -9,7 +9,7 @@ preset fixes is on the [profiles page](@/docs/profiles.md).
 
 ## Sending
 
-A [`Message`](https://docs.rs/asx-rs/latest/asx/as4/struct.Message.html) is
+A [`Message`](https://docs.rs/asx/latest/asx/as4/struct.Message.html) is
 the partner plus, depending on the profile, service, action and payloads.
 
 ```rust
@@ -136,7 +136,7 @@ SHA-256 and the NRR digest list.
 
 ## Receiving
 
-[`As4::inbound(dedup, handler)`](https://docs.rs/asx-rs/latest/asx/as4/struct.As4.html#method.inbound)
+[`As4::inbound(dedup, handler)`](https://docs.rs/asx/latest/asx/as4/struct.As4.html#method.inbound)
 returns an `Inbound`: a tower `Service<http::Request<B>>` with error type
 `Infallible` (axum: `Router::route_service(path, inbound)`).
 
@@ -257,7 +257,7 @@ async fn send_to_participant(smp: &Smp, as4: &As4, ubl: Vec<u8>) -> asx::Result<
 ```
 
 `Smp::production(http, anchor)` and `Smp::test(http, anchor)` take an
-[`HttpClient`](https://docs.rs/asx-rs/latest/asx/trait.HttpClient.html). A
+[`HttpClient`](https://docs.rs/asx/latest/asx/trait.HttpClient.html). A
 looked-up partner is not registered with the client; it is validated against
 the profile at send. A receiver that does not serve a document type returns
 `Err(asx::peppol::not_serviced())` from its handler. The SBDH envelope is not

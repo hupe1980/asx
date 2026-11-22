@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `asx-rs` are documented here.
+All notable changes to `asx` are documented here.
 
 Each entry separates the two kinds of change that matter to an integrator:
 
@@ -16,6 +16,17 @@ Versioning follows the [SemVer policy](#semver-policy) below.
 ---
 
 ## [Unreleased]
+
+## [0.20.0] — 2026-11-22
+
+The package is renamed from `asx-rs` to `asx`. No code change; see the
+[migration page](https://hupe1980.github.io/asx/docs/migration/).
+
+### API
+
+- **Package `asx`.** Depend on `asx = "0.20"` instead of `asx-rs`. The library
+  name stays `asx`, so `use asx::…` is unchanged. `asx-rs` receives no further
+  releases.
 
 ## [0.19.0] — 2026-11-16
 

@@ -9,7 +9,7 @@ AS2 (RFC 4130) is S/MIME over HTTP with a Message Disposition Notification
 
 ## Sending with a synchronous MDN
 
-An AS2 [`Message`](https://docs.rs/asx-rs/latest/asx/as2/struct.Message.html)
+An AS2 [`Message`](https://docs.rs/asx/latest/asx/as2/struct.Message.html)
 is one payload to one partner.
 
 ```rust
@@ -47,7 +47,7 @@ without it a fresh one is generated. `Payload::named` is refused.
 
 `send_async_mdn(msg, receipt_url)` sends with
 `Receipt-Delivery-Option: receipt_url` and returns a
-[`PendingMdn`](https://docs.rs/asx-rs/latest/asx/as2/struct.PendingMdn.html),
+[`PendingMdn`](https://docs.rs/asx/latest/asx/as2/struct.PendingMdn.html),
 which holds no secret; persist its `serde` form (versioned JSON) with the
 outbox entry. When the MDN arrives on your receipt URL, look it up and verify:
 
@@ -74,7 +74,7 @@ when the MDN is verified.
 ## Receiving
 
 `As2::inbound(dedup, handler)` returns the same `Inbound` tower `Service` as
-[AS4](@/docs/as4.md#receiving), with a handler over [`Received`](https://docs.rs/asx-rs/latest/asx/as2/struct.Received.html).
+[AS4](@/docs/as4.md#receiving), with a handler over [`Received`](https://docs.rs/asx/latest/asx/as2/struct.Received.html).
 
 ```rust
 use asx::{as2::{As2, Received}, MemoryDedup, Reject, Verified};

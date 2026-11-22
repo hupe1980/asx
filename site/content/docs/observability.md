@@ -19,7 +19,7 @@ The application installs a subscriber and a recorder, for example:
 
 ```toml
 [dependencies]
-asx-rs = { version = "0.19", features = ["metrics"] }
+asx = { version = "0.20", features = ["metrics"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 metrics-exporter-prometheus = "0.17"
 ```
@@ -128,7 +128,7 @@ There is no `profile` label; the preset name is the span field `profile`.
 
 ## Audit records
 
-Install an [`AuditSink`](https://docs.rs/asx-rs/latest/asx/trait.AuditSink.html) per client with `Builder::audit`; without one nothing is stored, but the record is still returned by `Verified::evidence()` and `Error::evidence()`. Implementing a sink, and what a sink failure means, is on the [persistence page](@/docs/persistence.md#the-audit-sink).
+Install an [`AuditSink`](https://docs.rs/asx/latest/asx/trait.AuditSink.html) per client with `Builder::audit`; without one nothing is stored, but the record is still returned by `Verified::evidence()` and `Error::evidence()`. Implementing a sink, and what a sink failure means, is on the [persistence page](@/docs/persistence.md#the-audit-sink).
 
 ### When a record is written
 
