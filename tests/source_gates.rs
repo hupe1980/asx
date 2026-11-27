@@ -251,9 +251,12 @@ fn no_testing_feature_and_no_interop_mode() {
 /// (which tests pause), never `std::time::Instant`.
 #[test]
 fn test_util_gates_only_the_testkit_module() {
+    // `#[cfg(all(test, feature = "test-util"))]` compiles only into the
+    // crate's own tests (a unit test that needs the testkit), never a build.
     let gated: Vec<_> = src_lines()
         .into_iter()
         .filter(|(_, _, line)| line.contains("feature = \"test-util\""))
+        .filter(|(_, _, line)| line.trim() != "#[cfg(all(test, feature = \"test-util\"))]")
         .collect();
     // `mod testkit`, `extern crate self as asx`, and the docs-compile
     // doctest module's feature list.

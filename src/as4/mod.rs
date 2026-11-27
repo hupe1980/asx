@@ -22,5 +22,7 @@ pub(crate) use send::As4AdditionalPayload;
 pub(crate) mod mime_packaging;
 mod parser;
 
+#[cfg(all(test, feature = "test-util"))]
+mod midnight_tests;
 #[cfg(test)]
 mod tests;

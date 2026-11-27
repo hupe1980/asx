@@ -293,7 +293,7 @@ async fn exchange(
         None => Ok(()),
     };
     match result {
-        Ok(As4SyncSignal::Receipt(receipt)) => {
+        Ok(As4SyncSignal::Receipt(_)) => {
             let record = record.expect("a verified receipt always has a record");
             if let Err(err) = written {
                 return Err(Error::delivered_but_unrecorded(
@@ -310,11 +310,7 @@ async fn exchange(
                         "the verified receipt carries no signer certificate",
                     )
                 })?;
-            Ok(Verified::new(
-                as4_receipt(&receipt.ref_to_message_id),
-                signer,
-                record,
-            ))
+            Ok(Verified::new(as4_receipt(&record), signer, record))
         }
         Ok(As4SyncSignal::Error(signal)) => {
             let code = signal

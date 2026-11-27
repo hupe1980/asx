@@ -332,17 +332,26 @@ impl As2Inbound {
         let token = match self.dedup.claim(&key).await {
             Ok(Claim::Claimed(token)) => token,
             Ok(Claim::Duplicate) => {
-                // A verified duplicate is answered, never delivered.
+                // A verified duplicate is answered and recorded, never
+                // delivered: the sender may hold only this MDN.
+                let builder = self.leg_builder(&message_id, &from, &opened);
                 return match self
-                    .mdn(
+                    .issue_and_record(
                         &req,
+                        builder,
+                        AuditOutcome::Duplicate,
                         DUPLICATE,
                         "The message was already received.",
-                        Some(&opened.mic()),
+                        &opened.mic(),
                     )
                     .await
                 {
-                    Ok(response) => (response, ReceiveOutcome::Duplicate, Some(message_id), None),
+                    Ok(mdn) => (
+                        self.response(&req, StatusCode::OK, mdn),
+                        ReceiveOutcome::Duplicate,
+                        Some(message_id),
+                        None,
+                    ),
                     Err(err) => self.backend_failure(&message_id, err),
                 };
             }
@@ -361,6 +370,64 @@ impl As2Inbound {
         self.deliver(req, from, opened, key, token).await
     }
 
+    /// The record builder of one authenticated inbound leg. Its `record_id`
+    /// is minted here, so the handler's record and the stored one share it.
+    fn leg_builder(&self, message_id: &str, from: &str, opened: &Opened) -> RecordBuilder {
+        use base64::Engine as _;
+        let config = self.client.config();
+        let builder = RecordBuilder::new(
+            &config.clock,
+            Protocol::As2,
+            Direction::Inbound,
+            message_id,
+            config.local.id.as_str(),
+            from,
+        )
+        .profile(Some(config.profile.name()))
+        .signer_der(Some(opened.signer_der.clone()));
+        match base64::engine::general_purpose::STANDARD.decode(&opened.mic_base64) {
+            Ok(digest) => builder.mic(opened.mic_alg, digest),
+            Err(_) => builder,
+        }
+    }
+
+    /// Sign a positive MDN, record it with `outcome` (its `Message-ID` and
+    /// `signingTime`), then return it. Nothing leaves unrecorded: a durable
+    /// sink failure is an `Err` for the retryable storage failure.
+    async fn issue_and_record(
+        &self,
+        req: &Request,
+        builder: RecordBuilder,
+        outcome: AuditOutcome,
+        disposition: &str,
+        text: &str,
+        mic: &str,
+    ) -> Result<IssuedMdn, String> {
+        let config = self.client.config();
+        let mdn = self.mdn_bytes(req, disposition, text, Some(mic)).await?;
+        let signed_at = crate::time_utils::format_rfc3339_secs(mdn.signed_at);
+        let record = builder
+            .disposition(Some(disposition))
+            .signal(Signal {
+                bytes: &mdn.bytes,
+                message_id: Some(&mdn.message_id),
+                ref_to_message_id: Some(&req.message_id),
+                timestamp: Some(&signed_at),
+                signed: true,
+                nrr: &[],
+            })
+            .finish(outcome, None)
+            .map_err(|err| err.to_string())?;
+        crate::audit::record(
+            config.audit.as_deref().map(|s| s as _),
+            &record,
+            "as2_inbound_audit",
+        )
+        .await
+        .map_err(|err| err.to_string())?;
+        Ok(mdn)
+    }
+
     async fn deliver(
         &self,
         req: Request,
@@ -369,24 +436,18 @@ impl As2Inbound {
         key: String,
         token: ClaimToken,
     ) -> Answer {
-        use base64::Engine as _;
         let config = self.client.config();
         let message_id = req.message_id.clone();
-        let mut builder = RecordBuilder::new(
-            &config.clock,
-            Protocol::As2,
-            Direction::Inbound,
-            message_id.as_str(),
-            config.local.id.as_str(),
-            from.as_str(),
-        )
-        .profile(Some(config.profile.name()))
-        .signer_der(Some(opened.signer_der.clone()));
-        if let Ok(digest) = base64::engine::general_purpose::STANDARD.decode(&opened.mic_base64) {
-            builder = builder.mic(opened.mic_alg, digest);
-        }
+        // One clock read: the handoff instant is the handler record's
+        // `recorded_at` and the stored record's `handed_off_at`.
+        let handed_off = config.clock.now();
+        let builder = self
+            .leg_builder(&message_id, &from, &opened)
+            .handed_off(handed_off);
         let (record, signer) = match (
-            builder.clone().finish(AuditOutcome::Accepted, None),
+            builder
+                .clone()
+                .finish_at(AuditOutcome::Accepted, None, handed_off),
             Certificate::from_der(&opened.signer_der),
         ) {
             (Ok(record), Ok(signer)) => (record, signer),
@@ -410,11 +471,13 @@ impl As2Inbound {
         match answer {
             Ok(()) => {
                 let mdn = match self
-                    .mdn_bytes(
+                    .issue_and_record(
                         &req,
+                        builder,
+                        AuditOutcome::Accepted,
                         PROCESSED,
                         "The message has been received and processed.",
-                        Some(&mic),
+                        &mic,
                     )
                     .await
                 {
@@ -424,32 +487,6 @@ impl As2Inbound {
                         return self.backend_failure(&message_id, err);
                     }
                 };
-                let finished = builder
-                    .disposition(Some(PROCESSED))
-                    .signal(Signal {
-                        bytes: &mdn,
-                        message_id: None,
-                        ref_to_message_id: Some(&message_id),
-                        timestamp: None,
-                        signed: true,
-                        nrr: &[],
-                    })
-                    .finish(AuditOutcome::Accepted, None);
-                let written = match &finished {
-                    Ok(record) => {
-                        crate::audit::record(
-                            config.audit.as_deref().map(|s| s as _),
-                            record,
-                            "as2_inbound_audit",
-                        )
-                        .await
-                    }
-                    Err(err) => Err(err.clone()),
-                };
-                if let Err(err) = written {
-                    self.abandon(&key, &token).await;
-                    return self.backend_failure(&message_id, err.to_string());
-                }
                 if let Err(err) = self.dedup.accept(&key, &token).await {
                     // No abandon: the current holder, if any, settles.
                     return self
@@ -546,14 +583,15 @@ impl As2Inbound {
         Ok(self.response(req, StatusCode::OK, mdn))
     }
 
-    /// A signed MDN: one `Signer::sign` through the CMS assembly.
+    /// A signed MDN: one `Signer::sign` through the CMS assembly, with the
+    /// `Message-ID` its response will carry and the `signingTime` it signed.
     async fn mdn_bytes(
         &self,
         req: &Request,
         disposition: &str,
         text: &str,
         mic: Option<&str>,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<IssuedMdn, String> {
         let config = self.client.config();
         let original = format!("<{}>", req.message_id);
         if [original.as_str(), config.local.id.as_str()]
@@ -564,21 +602,29 @@ impl As2Inbound {
         }
         let report = super::mdn_report(&config.local.id, &original, disposition, mic, text);
         let signer = config.local.signer_ref().signer.clone();
-        super::cms_keys::sign_detached(signer.as_ref(), &report, config.clock.now())
+        let message_id = super::client::fresh_message_id()
+            .map_err(|err| format!("no Message-ID for the MDN: {err}"))?;
+        let signed_at = config.clock.now();
+        let bytes = super::cms_keys::sign_detached(signer.as_ref(), &report, signed_at)
             .await
-            .map_err(|err| format!("the MDN could not be signed: {err}"))
+            .map_err(|err| format!("the MDN could not be signed: {err}"))?;
+        Ok(IssuedMdn {
+            bytes,
+            message_id,
+            signed_at,
+        })
     }
 
     fn response(
         &self,
         req: &Request,
         status: StatusCode,
-        mdn: Vec<u8>,
+        mdn: IssuedMdn,
     ) -> http::Response<Full<Bytes>> {
         let config = self.client.config();
-        let content_type = super::extract_content_type_header(&mdn)
+        let content_type = super::extract_content_type_header(&mdn.bytes)
             .unwrap_or_else(|| "multipart/signed".to_string());
-        let mut response = with_body(status, &content_type, mdn);
+        let mut response = with_body(status, &content_type, mdn.bytes);
         let headers = response.headers_mut();
         let mut set = |name: &'static str, value: String| {
             if let Ok(value) = http::HeaderValue::from_str(&value) {
@@ -590,12 +636,18 @@ impl As2Inbound {
         if let Some(from) = &req.from {
             set("as2-to", header_id(from));
         }
-        if let Ok(id) = super::client::fresh_message_id() {
-            set("message-id", format!("<{id}>"));
-        }
+        set("message-id", format!("<{}>", mdn.message_id));
         set("mime-version", "1.0".to_string());
         response
     }
+}
+
+/// An MDN the library signed: the bytes, the `Message-ID` its response
+/// carries and the CMS `signingTime`.
+struct IssuedMdn {
+    bytes: Vec<u8>,
+    message_id: String,
+    signed_at: std::time::SystemTime,
 }
 
 /// Whether `value` is an `AS2-Version` this side speaks (RFC 4130 §6.1).

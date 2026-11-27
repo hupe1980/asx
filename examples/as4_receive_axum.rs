@@ -7,7 +7,7 @@ use std::fs::read;
 #[rustfmt::skip]
 async fn deliver(msg: Verified<UserMessage>) -> Result<(), Reject> {
     for (i, p) in msg.payloads().iter().enumerate() { tokio::fs::write(format!("inbox/{}-{i}", msg.message_id()), p.bytes()).await?; }
-    Ok(()) // -> signed receipt; Err -> EBMS:0202; duplicates are answered without calling this
+    Ok(()) // -> signed receipt; Err -> EBMS:0202; duplicates are answered (and recorded) without calling this
 }
 
 #[rustfmt::skip]

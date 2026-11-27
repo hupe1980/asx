@@ -377,8 +377,8 @@ pub(crate) fn draft_send(
 
     // Pin `eb:MessageInfo/eb:Timestamp` once; a caller-supplied value keeps
     // a retry's NRR digests equal to the original's.
-    let message_timestamp =
-        timestamp.unwrap_or_else(|| crate::time_utils::format_rfc3339_secs(session.clock().now()));
+    let message_timestamp = timestamp
+        .unwrap_or_else(|| crate::time_utils::format_rfc3339_millis(session.clock().now()));
     let four_corner = policy.original_sender.is_some()
         || policy.final_recipient.is_some()
         || policy.tracking_identifier.is_some()

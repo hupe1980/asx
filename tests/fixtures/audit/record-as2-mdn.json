@@ -5,6 +5,7 @@
   "disposition": "automatic-action/MDN-sent-automatically; processed",
   "ebms_code": null,
   "error_kind": null,
+  "handed_off_at": null,
   "local_party": "audit-golden-as2",
   "message_id": "<msg-42@example>",
   "message_timestamp": null,

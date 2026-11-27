@@ -15,13 +15,13 @@ Two workflows, mirrored by two `just` recipes:
 | Job | Runs |
 |---|---|
 | `check` | `cargo fmt --check`; clippy (workspace, all features, all targets, `-D warnings`); rustdoc with `-D warnings`; `scripts/check-docs.sh` and `scripts/concepts-check.sh`; `cargo test --workspace --all-features` — this includes the doctests, so every Rust block of the README and the site compiles (`src/docs.rs`) |
-| `features` | `cargo hack check --each-feature --lib --tests` with `-D warnings`: no default features, each feature alone, all features |
+| `features` | `cargo hack check --each-feature` with `-D warnings`: no default features, each feature alone, all features; once with `--lib --tests`, once `--lib --no-dev-deps` (the dev-dependencies enable `test-util`) |
 | `msrv` | `cargo +1.88 check --workspace --all-features` |
 | `deny` | `cargo deny check advisories licenses bans sources` (`deny.toml`) |
 | `interop` | the `#[ignore]`d oracle suites: openssl CLI (AS2 S/MIME, BDEW mutual TLS), xmlsec1, Redis, and phase4 4.8.1 as the BDEW counterparty. The phase4 peer is built in the job from `tests/fixtures/phase4` (GitHub Actions layer cache) and passed in `ASX_PHASE4_IMAGE` |
 
 Not in CI: `just public-api` (needs nightly and `cargo-public-api`; run it on
-every API change, the snapshot is `tests/public-api.txt`, budget 161 items) and
+every API change, the snapshot is `tests/public-api.txt`, budget 172 items) and
 Holodeck B2B (`tests/interop_holodeck_counterparty.rs`, arm64-only image).
 
 `site.yml` builds the documentation site on pull requests that touch `site/`

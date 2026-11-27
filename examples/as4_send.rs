@@ -24,5 +24,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .property("BDEWDocumentType", "UTILMD").property("BDEWDocumentDate", "2026-11-16") // RzÜ AS4 2.6 Kap. 6
             .property("BDEWDocumentNo", "ABC123"))).await?;
     std::fs::write("receipt.json", serde_json::to_vec(receipt.evidence())?)?; // the audit record as JSON
+    println!("receipt {:?} at {:?}", receipt.message_id(), receipt.timestamp()); // the partner's ÜZ (GPKE Teil 1 Kap. 7)
     Ok(())
 }

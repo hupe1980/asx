@@ -212,9 +212,14 @@ fn with_audit(builder: asx::Builder<asx::as4::As4>) -> asx::Builder<asx::as4::As
 `durability()` decides what a failure means:
 
 - `Durable`: the error fails the exchange. On receive no receipt goes out and
-  the claim is released, so the retransmission is processed again; on send you
-  get `ErrorKind::Backend` with the verified receipt as `evidence()` (the
-  message was delivered: do not resend it).
+  the claim is released, so the retransmission is processed again (a
+  duplicate's receipt is withheld the same way); on send you get
+  `ErrorKind::Backend` with the verified receipt as `evidence()` (the message
+  was delivered: do not resend it).
+
+The library writes each `record_id` once, and only the final record of a leg.
+The handler's `Verified::evidence()` carries the same id. Do not write it
+yourself: an idempotent sink would keep that receipt-less copy.
 - `BestEffort`: an `ERROR` event and a counted metric; the exchange proceeds.
 
 `asx::testkit::audit::conformance` checks the durability claim; see

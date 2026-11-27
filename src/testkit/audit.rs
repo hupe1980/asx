@@ -255,7 +255,8 @@ pub async fn conformance<H: AuditSinkHarness>(harness: &H) -> Vec<ConformanceFai
     failures
 }
 
-/// Sample records for embedders' own tests: one per outcome, unicode ids and
+/// Sample records for embedders' own tests: one per [`AuditOutcome`](crate::AuditOutcome),
+/// an accepted leg with `handed_off_at` and an issued receipt, unicode ids and
 /// parties, empty and absent collections, and a 1 MiB non-UTF-8 signal.
 /// Every record has a distinct `message_id`.
 pub fn sample_records() -> Vec<AuditRecord> {

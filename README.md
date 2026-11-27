@@ -26,7 +26,7 @@ stay yours.
 
 ```toml
 [dependencies]
-asx = "0.20"
+asx = "0.21"
 ```
 
 Features are additive and none changes security behaviour:
@@ -75,6 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .property("BDEWDocumentType", "UTILMD").property("BDEWDocumentDate", "2026-11-16") // RzÜ AS4 2.6 Kap. 6
             .property("BDEWDocumentNo", "ABC123"))).await?;
     std::fs::write("receipt.json", serde_json::to_vec(receipt.evidence())?)?; // the audit record as JSON
+    println!("receipt {:?} at {:?}", receipt.message_id(), receipt.timestamp()); // the partner's ÜZ (GPKE Teil 1 Kap. 7)
     Ok(())
 }
 ```
@@ -95,7 +96,7 @@ use std::fs::read;
 #[rustfmt::skip]
 async fn deliver(msg: Verified<UserMessage>) -> Result<(), Reject> {
     for (i, p) in msg.payloads().iter().enumerate() { tokio::fs::write(format!("inbox/{}-{i}", msg.message_id()), p.bytes()).await?; }
-    Ok(()) // -> signed receipt; Err -> EBMS:0202; duplicates are answered without calling this
+    Ok(()) // -> signed receipt; Err -> EBMS:0202; duplicates are answered (and recorded) without calling this
 }
 
 #[rustfmt::skip]
@@ -202,8 +203,9 @@ for every known threat class with its status and evidence.
 - Presets: BDEW AS4-Profil 1.2, Peppol AS4 2.0.3, eDelivery AS4 1.15,
   ENTSOG 3.6, AS2 (RFC 4130).
 - AS4 One-Way/Push: sign, then encrypt (WSS SwA 1.1), gzip; signed NRR
-  receipts; duplicates, the test service and the BDEW path switch handled;
-  part properties (`Payload::property`) under every profile.
+  receipts, each recorded with its own id and time; duplicates, the test
+  service and the BDEW path switch handled; part properties
+  (`Payload::property`) under every profile.
 - AS2: signed and encrypted, signed MDN with the MIC verified, asynchronous
   MDNs (`PendingMdn`), duplicate detection.
 - WS-Security: RSA-SHA256, ECDSA-SHA256 (`r ‖ s`, brainpoolP256r1 for BDEW),

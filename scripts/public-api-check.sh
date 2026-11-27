@@ -4,7 +4,7 @@
 #   1. The snapshot `cargo +nightly public-api -sss --features as2,as4,http-client,peppol,metrics` equals
 #      tests/public-api.txt (regenerate with `just public-api-update` and
 #      review the diff in the same change).
-#   2. The declared item count is at most 161: lines starting with `pub `,
+#   2. The declared item count is at most 172: lines starting with `pub `,
 #      excluding members of `impl Trait for Type` blocks (fixed by the trait)
 #      and modules that declare no item (documentation only, such as
 #      `asx::threat_model`: nothing to call, nothing to break).
@@ -19,7 +19,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BUDGET=161
+BUDGET=172
 committed=tests/public-api.txt
 failed=0
 
@@ -96,7 +96,8 @@ done <scripts/deleted-names.txt
 # 4. Word check over declared item paths.
 # `Builder::crl_signer` is trust material (the indirect-CRL signer, like a
 # trust anchor), not a setting.
-allow='^asx::(Profile|Quirk|SignatureAlgorithm|Signer|Receipt|KeyOp|ClaimToken)(::|<|$)|^asx::KeyPair::sign$|^asx::LocalParty::signer$|^asx::Partner::(signing_cert|encryption_cert)$|^asx::Builder<C>::crl_signer$|^asx::Verified<T>::signer$|^asx::AuditRecord::signal$|^asx::Claim::Claimed$'
+# `AuditRecord::receipt` reads back the evidence of a leg, not a setting.
+allow='^asx::(Profile|Quirk|SignatureAlgorithm|Signer|Receipt|KeyOp|ClaimToken)(::|<|$)|^asx::KeyPair::sign$|^asx::LocalParty::signer$|^asx::Partner::(signing_cert|encryption_cert)$|^asx::Builder<C>::crl_signer$|^asx::Verified<T>::signer$|^asx::AuditRecord::(signal|receipt)$|^asx::Claim::Claimed$'
 words=$(printf '%s\n' "$current" | awk '
     {
         line = $0

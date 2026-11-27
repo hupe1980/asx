@@ -1,6 +1,6 @@
 [package]
 name = "asx"
-version = "0.20.0"
+version = "0.21.0"
 edition = "2024"
 authors = ["hupe1980"]
 description = "AS2 and AS4 (ebMS3) B2B messaging: BDEW, Peppol, eDelivery and ENTSOG profiles, signed receipts and MDNs, one tower Service to receive"
@@ -13,15 +13,19 @@ documentation = "https://docs.rs/asx"
 rust-version = "1.88"
 keywords = ["as2", "as4", "ebms3", "edi", "peppol"]
 categories = ["network-programming", "cryptography", "encoding"]
-# Not published: the website, scripts, benches, local notes.
-# Anchored with `/`: an unanchored pattern matches at any depth.
-exclude = [
-    "/*_FEEDBACK.md",
-    "/artifacts/",
-    "/scripts/",
-    "/benches/",
-    "/site/",
-    "/concepts/",
+# Published: the library, its examples and the documents rustdoc includes.
+# An allowlist, so a new top-level file or folder stays unpublished until
+# listed. The one test fixture is read by `testkit::audit::sample_records`.
+include = [
+    "/src/**",
+    "/examples/*.rs",
+    "/tests/fixtures/testkit/audit/sample-records.json",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/SECURITY.md",
+    "/THREAT_MODEL.md",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
 ]
 
 [package.metadata.docs.rs]

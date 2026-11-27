@@ -74,6 +74,8 @@ pub(crate) mod test_support;
     feature = "test-util"
 ))]
 mod docs;
+// The egress behind the built-in `HttpClient`, which exists with a protocol.
+#[cfg(any(feature = "as2", feature = "as4"))]
 #[allow(unreachable_pub)]
 pub(crate) mod transport;
 #[cfg(any(feature = "as2", feature = "as4"))]
@@ -129,7 +131,7 @@ pub(crate) mod revocation;
 #[cfg(any(feature = "as2", feature = "as4"))]
 mod verified;
 
-pub use audit::{AuditDurability, AuditRecord, AuditSink};
+pub use audit::{AuditDurability, AuditOutcome, AuditRecord, AuditSink};
 #[cfg(any(feature = "as2", feature = "as4"))]
 pub use builder::Builder;
 #[doc(hidden)]

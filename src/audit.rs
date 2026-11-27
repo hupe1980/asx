@@ -46,6 +46,8 @@ use sha2::{Digest, Sha256};
 
 use crate::core::{AsxError, ErrorCode, ErrorContext, Result};
 use crate::error::BoxFuture;
+#[cfg(any(feature = "as2", feature = "as4"))]
+use crate::verified::Receipt;
 
 /// Where evidence of each exchange leg is kept.
 ///
@@ -113,6 +115,8 @@ pub struct AuditRecord {
     record_id: String,
     #[serde(with = "rfc3339_millis")]
     recorded_at: SystemTime,
+    #[serde(default, with = "rfc3339_millis_opt")]
+    handed_off_at: Option<SystemTime>,
     protocol: Protocol,
     direction: Direction,
     outcome: AuditOutcome,
@@ -156,6 +160,38 @@ impl AuditRecord {
     /// The receipt, MDN or `eb:Error` exactly as on the wire, if this leg has one.
     pub fn signal(&self) -> Option<&[u8]> {
         self.signal.as_ref().map(|s| s.bytes.as_slice())
+    }
+
+    /// What happened on this leg.
+    pub fn outcome(&self) -> AuditOutcome {
+        self.outcome
+    }
+
+    /// The positive receipt or MDN of this leg: the partner's on a
+    /// [`Delivered`](AuditOutcome::Delivered) send, the one issued on an
+    /// [`Accepted`](AuditOutcome::Accepted) or
+    /// [`Duplicate`](AuditOutcome::Duplicate) receive. `None` for every other
+    /// outcome: an `eb:Error` or a negative MDN is not a receipt. Equal to the
+    /// [`Receipt`] that `send` returns for the same leg.
+    #[cfg(any(feature = "as2", feature = "as4"))]
+    pub fn receipt(&self) -> Option<Receipt> {
+        Receipt::from_record(self)
+    }
+
+    /// When the verified message was handed to the handler: inbound legs whose
+    /// handler ran (outcome [`Accepted`](AuditOutcome::Accepted)), otherwise
+    /// `None`. The receipt time is
+    /// [`receipt()`](Self::receipt)`.timestamp()`; this is the handoff.
+    pub fn handed_off_at(&self) -> Option<SystemTime> {
+        self.handed_off_at
+    }
+
+    /// The signal's own message id and wire timestamp, as recorded.
+    #[cfg_attr(not(any(feature = "as2", feature = "as4")), allow(dead_code))]
+    pub(crate) fn signal_identity(&self) -> Option<(Option<&str>, Option<&str>)> {
+        self.signal
+            .as_ref()
+            .map(|s| (s.message_id.as_deref(), s.timestamp.as_deref()))
     }
 
     /// The verified signer's certificate, DER.
@@ -211,33 +247,29 @@ pub(crate) struct SignalEvidence {
     nrr: Vec<ReferenceDigest>,
 }
 
-/// The fate of one exchange leg.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// What happened on one exchange leg ([`AuditRecord::outcome`]). The stored
+/// form is the snake_case name (`delivered`, `partner_error`, …).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-pub(crate) enum AuditOutcome {
-    /// Async MDN requested, not yet received.
-    Sent,
-    /// Receipt/MDN verified, positive.
+pub enum AuditOutcome {
+    /// Sent; the partner's receipt or `processed` MDN verified.
     Delivered,
-    /// The counterparty returned an ebMS error or a negative MDN.
+    /// Sent; the partner answered with an `eb:Error` or a negative MDN.
     PartnerError,
-    /// Transmitted; no verifiable receipt.
+    /// Sent; the answer could not be verified, so delivery is unknown.
     Indeterminate,
-    /// Inbound, receipt issued (or to be issued by the caller).
+    /// Received; the handler returned `Ok` and the receipt or MDN was issued
+    /// (also an AS4 test-service message, which is receipted, not delivered).
     Accepted,
-    /// Inbound, a retransmission of an accepted message.
+    /// Received again after an acceptance; a fresh receipt or MDN was issued
+    /// and the handler was not called.
     Duplicate,
-    /// Inbound, authenticated, refused.
-    Rejected,
 }
 
 impl AuditOutcome {
     fn requires_error_kind(self) -> bool {
-        matches!(
-            self,
-            Self::PartnerError | Self::Indeterminate | Self::Rejected
-        )
+        matches!(self, Self::PartnerError | Self::Indeterminate)
     }
 }
 
@@ -258,10 +290,15 @@ pub(crate) enum Direction {
 // ── Building ────────────────────────────────────────────────────────────────
 
 /// Assembles a record from pipeline state and enforces its invariants.
+///
+/// The `record_id` is minted in [`new`](Self::new), so every clone finishes
+/// with the same id: one leg, one id (the handler's record and the stored one).
 #[derive(Debug, Clone)]
 pub(crate) struct RecordBuilder {
     rec: AuditRecord,
-    /// `recorded_at` and the UUIDv7 time are read from it at `finish`.
+    /// The leg's id, or the randomness failure `finish` reports.
+    record_id: std::result::Result<String, AsxError>,
+    /// `recorded_at` is read from it at `finish`.
     clock: crate::clock::SharedClock,
 }
 
@@ -276,10 +313,12 @@ impl RecordBuilder {
         partner: impl Into<String>,
     ) -> Self {
         Self {
+            record_id: new_record_id(clock.now()),
             clock: clock.clone(),
             rec: AuditRecord {
                 record_id: String::new(),
                 recorded_at: UNIX_EPOCH,
+                handed_off_at: None,
                 protocol,
                 direction,
                 outcome: AuditOutcome::Accepted,
@@ -370,6 +409,12 @@ impl RecordBuilder {
         self
     }
 
+    /// The instant the verified message was handed to the handler.
+    pub(crate) fn handed_off(mut self, at: SystemTime) -> Self {
+        self.rec.handed_off_at = Some(millis(at));
+        self
+    }
+
     pub(crate) fn disposition(mut self, value: Option<&str>) -> Self {
         self.rec.disposition = value.map(str::to_owned);
         self
@@ -384,9 +429,21 @@ impl RecordBuilder {
     /// a signal acknowledges this record's message, and `error_kind` is present
     /// exactly when the outcome is a failure.
     pub(crate) fn finish(
+        self,
+        outcome: AuditOutcome,
+        error_kind: Option<&'static str>,
+    ) -> Result<AuditRecord> {
+        let now = self.clock.now();
+        self.finish_at(outcome, error_kind, now)
+    }
+
+    /// [`finish`](Self::finish) with `recorded_at = now`, for a caller that
+    /// already read the clock (the handoff).
+    pub(crate) fn finish_at(
         mut self,
         outcome: AuditOutcome,
         error_kind: Option<&'static str>,
+        now: SystemTime,
     ) -> Result<AuditRecord> {
         let invalid = |detail: String| {
             AsxError::new(
@@ -411,8 +468,7 @@ impl RecordBuilder {
         }
         self.rec.outcome = outcome;
         self.rec.error_kind = error_kind.map(str::to_owned);
-        let now = self.clock.now();
-        self.rec.record_id = new_record_id(now)?;
+        self.rec.record_id = self.record_id?;
         self.rec.recorded_at = millis(now);
         Ok(self.rec)
     }
@@ -593,6 +649,37 @@ mod rfc3339_millis {
                 "recorded_at must be RFC 3339 UTC with milliseconds (YYYY-MM-DDTHH:MM:SS.mmmZ), got {text:?}"
             ))
         })
+    }
+}
+
+/// [`rfc3339_millis`] for an optional instant; `null` when absent.
+mod rfc3339_millis_opt {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::time::SystemTime;
+
+    pub(super) fn serialize<S: Serializer>(
+        t: &Option<SystemTime>,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        match t {
+            Some(t) => s.serialize_some(&crate::time_utils::format_rfc3339_millis(*t)),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<Option<SystemTime>, D::Error> {
+        let Some(text) = Option::<String>::deserialize(d)? else {
+            return Ok(None);
+        };
+        crate::time_utils::parse_rfc3339_millis(&text)
+            .map(Some)
+            .ok_or_else(|| {
+                serde::de::Error::custom(format!(
+                    "handed_off_at must be RFC 3339 UTC with milliseconds or null, got {text:?}"
+                ))
+            })
     }
 }
 

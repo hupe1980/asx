@@ -156,8 +156,59 @@ fn builder_rejects_error_kind_on_a_success_outcome() {
             .finish(AuditOutcome::Accepted, Some("rejected"))
             .is_err()
     );
-    assert!(b.clone().finish(AuditOutcome::Rejected, None).is_err());
-    assert!(b.finish(AuditOutcome::Rejected, Some("rejected")).is_ok());
+    assert!(b.clone().finish(AuditOutcome::PartnerError, None).is_err());
+    assert!(
+        b.finish(AuditOutcome::PartnerError, Some("partner_error"))
+            .is_ok()
+    );
+}
+
+/// One leg, one id: every clone of a builder finishes with the id minted in
+/// `new`, so the handler's record and the stored one share it; a second
+/// builder (a retry) gets another.
+#[test]
+fn clones_of_one_builder_share_the_record_id() {
+    let clock = crate::clock::system();
+    let b = RecordBuilder::new(&clock, Protocol::As4, Direction::Inbound, "m", "a", "b");
+    let at = clock.now();
+    let handoff = b
+        .clone()
+        .handed_off(at)
+        .finish_at(AuditOutcome::Accepted, None, at)
+        .unwrap();
+    let stored = b
+        .clone()
+        .handed_off(at)
+        .finish(AuditOutcome::Accepted, None)
+        .unwrap();
+    assert_eq!(handoff.record_id(), stored.record_id());
+    assert_eq!(handoff.handed_off_at(), stored.handed_off_at());
+    assert_eq!(handoff.recorded_at, handoff.handed_off_at().unwrap());
+    let retry = RecordBuilder::new(&clock, Protocol::As4, Direction::Inbound, "m", "a", "b")
+        .finish(AuditOutcome::Accepted, None)
+        .unwrap();
+    assert_ne!(retry.record_id(), stored.record_id());
+    assert_eq!(retry.handed_off_at(), None);
+}
+
+/// `handed_off_at` is stored as RFC 3339 milliseconds or `null`, absent
+/// reads as `null`, and another precision is refused.
+#[test]
+fn handed_off_at_round_trips_and_is_strict() {
+    let clock = crate::clock::system();
+    let rec = RecordBuilder::new(&clock, Protocol::As4, Direction::Inbound, "m", "a", "b")
+        .handed_off(clock.now())
+        .finish(AuditOutcome::Accepted, None)
+        .unwrap();
+    let mut json = serde_json::to_value(&rec).unwrap();
+    assert!(json["handed_off_at"].as_str().unwrap().ends_with('Z'));
+    let back: AuditRecord = serde_json::from_value(json.clone()).unwrap();
+    assert_eq!(back, rec);
+    json.as_object_mut().unwrap().remove("handed_off_at");
+    let absent: AuditRecord = serde_json::from_value(json.clone()).unwrap();
+    assert_eq!(absent.handed_off_at(), None);
+    json["handed_off_at"] = serde_json::Value::String("2026-11-27T22:59:59Z".into());
+    assert!(serde_json::from_value::<AuditRecord>(json).is_err());
 }
 
 #[test]

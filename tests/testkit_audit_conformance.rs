@@ -211,27 +211,22 @@ async fn lossy_sink_fails_concurrency_check() {
 
 #[test]
 fn sample_records_cover_every_outcome_and_a_large_binary_signal() {
+    use asx::AuditOutcome::{Accepted, Delivered, Duplicate, Indeterminate, PartnerError};
     let samples = audit::sample_records();
-    let outcomes: std::collections::BTreeSet<String> = samples
-        .iter()
-        .map(|r| {
-            serde_json::to_value(r).unwrap()["outcome"]
-                .as_str()
-                .unwrap()
-                .to_owned()
-        })
-        .collect();
+    let outcomes: std::collections::HashSet<asx::AuditOutcome> =
+        samples.iter().map(AuditRecord::outcome).collect();
     assert_eq!(
-        outcomes.into_iter().collect::<Vec<_>>(),
-        [
-            "accepted",
-            "delivered",
-            "duplicate",
-            "indeterminate",
-            "partner_error",
-            "rejected",
-            "sent"
-        ]
+        outcomes,
+        [Delivered, PartnerError, Indeterminate, Accepted, Duplicate].into(),
+        "one sample per outcome the library writes"
+    );
+    let accepted = samples.iter().find(|r| r.outcome() == Accepted).unwrap();
+    assert!(accepted.handed_off_at().is_some());
+    assert!(
+        accepted
+            .receipt()
+            .and_then(|r| r.message_id().map(str::to_owned))
+            .is_some()
     );
     let large = samples
         .iter()
