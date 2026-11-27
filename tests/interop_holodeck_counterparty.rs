@@ -239,7 +239,7 @@ fn build_jks_keystores(work_dir: &Path) {
 }
 
 /// An `asx::HttpClient` that maps [`PLACEHOLDER_ENDPOINT`] to the
-/// container's plain-HTTP listener. Test-only: the library's own client is
+/// container's plain-HTTP listener and answers the test CA's CRL. Test-only: the library's own client is
 /// HTTPS-only behind an SSRF guard.
 #[derive(Debug, Clone)]
 struct ContainerClient {
@@ -256,6 +256,15 @@ impl asx::HttpClient for ContainerClient {
         Result<http::Response<bytes::Bytes>, Box<dyn std::error::Error + Send + Sync>>,
     > {
         Box::pin(async move {
+            // The test CA's CRL: the crate checks Holodeck's signer
+            // (and its own chain) for revocation before trusting a receipt.
+            if let Some(crl) = asx::testkit::pki::published_crl(&request.uri().to_string()) {
+                return Ok(http::Response::builder()
+                    .status(200)
+                    .header("content-type", "application/pkix-crl")
+                    .body(bytes::Bytes::from(crl))
+                    .expect("CRL response"));
+            }
             assert_eq!(request.uri().to_string(), PLACEHOLDER_ENDPOINT);
             let mut outgoing = self.client.post(&self.target);
             for (name, value) in request.headers() {

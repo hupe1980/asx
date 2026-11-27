@@ -92,9 +92,11 @@ pub(crate) fn parse_rfc3339_millis(s: &str) -> Option<SystemTime> {
 ///
 /// Accepted forms:
 /// - `YYYY-MM-DDTHH:MM:SSZ`
-/// - `YYYY-MM-DDTHH:MM:SS.fZ` (fractional seconds — fraction is discarded)
+/// - `YYYY-MM-DDTHH:MM:SS.fZ` (one or more fraction digits, discarded)
 /// - `YYYY-MM-DDTHH:MM:SS+HH:MM` / `…-HH:MM` (timezone offset)
 /// - `T` may be lowercase `t`
+///
+/// A zone designator is required; nothing may follow it.
 ///
 /// Restrictions:
 /// - Year must be in `[0001, 9999]`.
@@ -102,17 +104,38 @@ pub(crate) fn parse_rfc3339_millis(s: &str) -> Option<SystemTime> {
 ///   day-of-month precision (e.g. day 31 in a 30-day month) is not enforced —
 ///   AS4 gateways always produce well-formed timestamps.
 pub(crate) fn parse_rfc3339_to_unix_secs(s: &str) -> Option<i64> {
+    parse_date_time(s, false).map(|(secs, _)| secs)
+}
+
+/// Parse an `eb:Timestamp`: an `xsd:dateTime` whose zone designator is
+/// optional, absent meaning UTC (ebMS3 core §5.2.2.1: "It MUST be expressed
+/// as UTC. Indicating UTC in the Timestamp element by including the 'Z'
+/// identifier is optional."). The fraction is kept to the nanosecond (digits
+/// past the ninth are truncated). The forms of
+/// [`parse_rfc3339_to_unix_secs`], plus `YYYY-MM-DDTHH:MM:SS(.f+)?`.
+pub(crate) fn parse_xsd_datetime(s: &str) -> Option<SystemTime> {
+    let (secs, nanos) = parse_date_time(s, true)?;
+    let whole = Duration::from_secs(secs.unsigned_abs());
+    let base = if secs >= 0 {
+        UNIX_EPOCH.checked_add(whole)?
+    } else {
+        UNIX_EPOCH.checked_sub(whole)?
+    };
+    base.checked_add(Duration::from_nanos(u64::from(nanos)))
+}
+
+/// `(Unix seconds, nanoseconds)` of `YYYY-MM-DDTHH:MM:SS(.f+)?(Z|±HH:MM)`,
+/// the designator optional (UTC) when `designator_optional`.
+fn parse_date_time(s: &str, designator_optional: bool) -> Option<(i64, u32)> {
     let b = s.as_bytes();
-    // Minimum valid form: "2026-01-02T03:04:05Z" = 20 bytes
-    if b.len() < 20 {
+    // "2026-01-02T03:04:05" = 19 bytes, the shortest form.
+    if b.len() < 19 {
         return None;
     }
-
     if b[4] != b'-' || b[7] != b'-' || b[13] != b':' || b[16] != b':' {
         return None;
     }
-    let sep = b[10];
-    if sep != b'T' && sep != b't' {
+    if b[10] != b'T' && b[10] != b't' {
         return None;
     }
 
@@ -123,34 +146,45 @@ pub(crate) fn parse_rfc3339_to_unix_secs(s: &str) -> Option<i64> {
     let min = parse_fixed::<2>(&b[14..16])? as i64;
     let sec = parse_fixed::<2>(&b[17..19])? as i64;
 
-    // Skip optional fractional seconds (e.g. `.789` or `.123456`)
+    // Optional fraction: a dot and at least one digit.
     let mut pos = 19usize;
+    let mut nanos: u32 = 0;
     if b.get(pos) == Some(&b'.') {
         pos += 1;
-        while pos < b.len() && b[pos].is_ascii_digit() {
-            pos += 1;
+        let digits = b[pos..].iter().take_while(|c| c.is_ascii_digit()).count();
+        if digits == 0 {
+            return None;
         }
+        for (i, &c) in b[pos..pos + digits].iter().take(9).enumerate() {
+            nanos += u32::from(c - b'0') * 10u32.pow(8 - i as u32);
+        }
+        pos += digits;
     }
 
     let offset_secs: i64 = match b.get(pos) {
-        Some(&b'Z') | Some(&b'z') => 0,
+        Some(&b'Z') | Some(&b'z') => {
+            pos += 1;
+            0
+        }
         Some(&b'+') | Some(&b'-') => {
-            if b.len() < pos + 6 {
+            if b.len() < pos + 6 || b[pos + 3] != b':' {
                 return None;
             }
             let sign: i64 = if b[pos] == b'+' { 1 } else { -1 };
             let oh = parse_fixed::<2>(&b[pos + 1..pos + 3])? as i64;
-            if b.get(pos + 3) != Some(&b':') {
-                return None;
-            }
             let om = parse_fixed::<2>(&b[pos + 4..pos + 6])? as i64;
             if oh > 23 || om > 59 {
                 return None;
             }
+            pos += 6;
             sign * (oh * 3600 + om * 60)
         }
+        None if designator_optional => 0,
         _ => return None,
     };
+    if pos != b.len() {
+        return None;
+    }
 
     // Gross range validation
     if !(1..=9999).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
@@ -162,8 +196,10 @@ pub(crate) fn parse_rfc3339_to_unix_secs(s: &str) -> Option<i64> {
     }
 
     let days = calendar_to_days(year, month, day)?;
-    let utc_secs = days * 86400 + hour * 3600 + min * 60 + sec - offset_secs;
-    Some(utc_secs)
+    Some((
+        days * 86400 + hour * 3600 + min * 60 + sec - offset_secs,
+        nanos,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -354,5 +390,59 @@ mod tests {
         let a = parse_rfc3339_to_unix_secs("2026-05-27t12:34:56Z").unwrap();
         let b = parse_rfc3339_to_unix_secs("2026-05-27T12:34:56Z").unwrap();
         assert_eq!(a, b);
+    }
+
+    /// ebMS3 §5.2.2.1: the designator is optional and absent means UTC; the
+    /// fraction is kept. Forms that are not an `xsd:dateTime` are refused.
+    #[test]
+    fn eb_timestamp_lexical_table() {
+        let at = |secs: u64, nanos: u64| {
+            Some(UNIX_EPOCH + Duration::from_secs(secs) + Duration::from_nanos(nanos))
+        };
+        // 2026-11-27T22:59:59Z
+        let t = 1_795_820_399;
+        for (text, want) in [
+            ("2026-11-27T22:59:59", at(t, 0)),
+            ("2026-11-27T22:59:59Z", at(t, 0)),
+            ("2026-11-27t22:59:59z", at(t, 0)),
+            ("2026-11-27T22:59:59.5", at(t, 500_000_000)),
+            ("2026-11-27T22:59:59.400Z", at(t, 400_000_000)),
+            ("2026-11-27T22:59:59.123456789123Z", at(t, 123_456_789)),
+            ("2026-11-27T23:59:59.400+01:00", at(t, 400_000_000)),
+            ("2026-11-27T21:59:59-01:00", at(t, 0)),
+        ] {
+            assert_eq!(parse_xsd_datetime(text), want, "{text}");
+        }
+        for text in [
+            "2026-11-27T22:59:59.Z",
+            "2026-11-27T22:59:59.",
+            "2026-11-27T22:59:59+0100",
+            "2026-11-27T22:59:59 Z",
+            "2026-11-27T22:59Z",
+            "2026-11-27T22:59:59Zjunk",
+            "2026-11-27T22:59:59+01:00x",
+            "2026-11-27T22:59:59.5.5Z",
+            "",
+        ] {
+            assert_eq!(parse_xsd_datetime(text), None, "{text}");
+        }
+    }
+
+    /// The RFC 3339 reader (wsu:Timestamp) keeps its required designator and
+    /// refuses the same malformed forms.
+    #[test]
+    fn rfc3339_refuses_empty_fraction_and_trailing_text() {
+        for text in [
+            "2026-11-27T22:59:59.Z",
+            "2026-11-27T22:59:59Zjunk",
+            "2026-11-27T22:59:59+01:00x",
+            "2026-11-27T22:59:59",
+        ] {
+            assert_eq!(parse_rfc3339_to_unix_secs(text), None, "{text}");
+        }
+        assert_eq!(
+            parse_rfc3339_to_unix_secs("2026-11-27T22:59:59.4Z"),
+            Some(1_795_820_399)
+        );
     }
 }

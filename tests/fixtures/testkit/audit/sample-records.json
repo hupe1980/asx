@@ -2,6 +2,7 @@
   {
     "record_id": "01929d3e-6a1b-7c3e-9f00-3b5c2e4d1a01",
     "recorded_at": "2026-10-16T09:30:01.007Z",
+    "handed_off_at": null,
     "protocol": "as4",
     "direction": "outbound",
     "outcome": "delivered",
@@ -57,35 +58,9 @@
     "quirks": []
   },
   {
-    "record_id": "01929d3e-6a1b-7c3e-9f00-3b5c2e4d1a02",
-    "recorded_at": "2026-10-16T09:30:02.014Z",
-    "protocol": "as2",
-    "direction": "outbound",
-    "outcome": "sent",
-    "message_id": "<as2-async-1@sender.example>",
-    "ref_to_message_id": null,
-    "conversation_id": null,
-    "local_party": "9900000000001",
-    "partner": "9900000000002",
-    "profile": null,
-    "service": null,
-    "action": null,
-    "message_timestamp": null,
-    "signer": null,
-    "references": [],
-    "mic": {
-      "algorithm": "sha-256",
-      "value": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
-    },
-    "signal": null,
-    "disposition": null,
-    "error_kind": null,
-    "ebms_code": null,
-    "quirks": []
-  },
-  {
     "record_id": "01929d3e-6a1b-7c3e-9f00-3b5c2e4d1a03",
     "recorded_at": "2026-10-16T09:30:03.021Z",
+    "handed_off_at": null,
     "protocol": "as4",
     "direction": "outbound",
     "outcome": "partner_error",
@@ -118,6 +93,7 @@
   {
     "record_id": "01929d3e-6a1b-7c3e-9f00-3b5c2e4d1a04",
     "recorded_at": "2026-10-16T09:30:04.028Z",
+    "handed_off_at": null,
     "protocol": "as4",
     "direction": "outbound",
     "outcome": "indeterminate",
@@ -142,6 +118,7 @@
   {
     "record_id": "01929d3e-6a1b-7c3e-9f00-3b5c2e4d1a05",
     "recorded_at": "2026-10-16T09:30:05.035Z",
+    "handed_off_at": "2026-10-16T09:30:05.000Z",
     "protocol": "as2",
     "direction": "inbound",
     "outcome": "accepted",
@@ -163,7 +140,15 @@
       "algorithm": "sha-256",
       "value": "//7DKACA"
     },
-    "signal": null,
+    "signal": {
+      "bytes": "PGViOlJlY2VpcHQgaWQ9InJlY2VpcHQtYWNjZXB0ZWRAYXN4Ii8+",
+      "sha256": "d492ca871838c42e02f4571c0c22139a330a5f0aa2e28fb2ad8456eb2b897d43",
+      "message_id": "receipt-accepted@asx",
+      "ref_to_message_id": "<äöü-ユニコード-id@partner.example>",
+      "timestamp": "2026-10-16T09:30:05.035Z",
+      "signed": true,
+      "nrr": []
+    },
     "disposition": "automatic-action/MDN-sent-automatically; processed",
     "error_kind": null,
     "ebms_code": null,
@@ -172,6 +157,7 @@
   {
     "record_id": "01929d3e-6a1b-7c3e-9f00-3b5c2e4d1a06",
     "recorded_at": "2026-10-16T09:30:06.042Z",
+    "handed_off_at": null,
     "protocol": "as4",
     "direction": "inbound",
     "outcome": "duplicate",
@@ -201,39 +187,18 @@
       }
     ],
     "mic": null,
-    "signal": null,
-    "disposition": null,
+    "signal": {
+      "bytes": "PGViOlJlY2VpcHQgaWQ9InJlY2VpcHQtZHVwbGljYXRlQGFzeCIvPg==",
+      "sha256": "4b3a9a2dbd5ae1ed5e85403939780f12974bd173c2b6ad4767d50ce09e773617",
+      "message_id": "receipt-duplicate@asx",
+      "ref_to_message_id": "m-duplicate@partner.example",
+      "timestamp": "2026-10-16T09:30:06.042Z",
+      "signed": true,
+      "nrr": []
+    },
+    "disposition": "receipt",
     "error_kind": null,
     "ebms_code": null,
     "quirks": []
-  },
-  {
-    "record_id": "01929d3e-6a1b-7c3e-9f00-3b5c2e4d1a07",
-    "recorded_at": "2026-10-16T09:30:07.049Z",
-    "protocol": "as4",
-    "direction": "inbound",
-    "outcome": "rejected",
-    "message_id": "m-rejected@partner.example",
-    "ref_to_message_id": null,
-    "conversation_id": null,
-    "local_party": "9900000000001",
-    "partner": "9900000000002",
-    "profile": null,
-    "service": null,
-    "action": null,
-    "message_timestamp": null,
-    "signer": {
-      "certificate_der": "MIIBCgABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj9AQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5/gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6vsLGys7S1tre4ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8=",
-      "fingerprint_sha256": "30418c478829cc005f22f1de5d8d6529292c4319b2e38118e944bd0fd3b1059f"
-    },
-    "references": [],
-    "mic": null,
-    "signal": null,
-    "disposition": null,
-    "error_kind": "rejected",
-    "ebms_code": "EBMS:0010",
-    "quirks": [
-      "example_quirk"
-    ]
   }
 ]

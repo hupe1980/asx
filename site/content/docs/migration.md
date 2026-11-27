@@ -1,7 +1,25 @@
 +++
 title = "Migrating"
-description = "Every 0.19 to 0.20, 0.18 to 0.19, 0.17 to 0.18, 0.16 to 0.17 and 0.15 to 0.16 wire change and API replacement, grouped by task."
+description = "Every 0.20 to 0.21, 0.19 to 0.20, 0.18 to 0.19, 0.17 to 0.18, 0.16 to 0.17 and 0.15 to 0.16 wire change and API replacement, grouped by task."
 +++
+
+## 0.20 to 0.21: receipt evidence
+
+Every positive receipt is identified, timed and recorded (GPKE Teil 1 Kap. 7:
+the time of receipt is the positive AS4 receipt's).
+
+| Change | 0.20 | 0.21 | Consequence |
+|---|---|---|---|
+| **`eb:Timestamp` written** | whole seconds | milliseconds (`….300Z`) | signed `eb:Messaging` digests change; goldens pinned on seconds change |
+| **`eb:Timestamp` read** | `Z` or offset required; `….Z` accepted | no designator is UTC (ebMS3 §5.2.2.1); a fraction needs a digit; nothing may follow the zone | conformant designator-less partners are accepted |
+| **`Receipt`** | no accessors | `message_id()`, `timestamp()` | read the partner's ÜZ from `send`'s result instead of parsing `evidence().signal()` |
+| **`AuditRecord`** | `record_id`, `message_id`, `partner`, `signal` | also `outcome()`, `receipt()`, `handed_off_at()` | drop your own serde reader for these fields |
+| **`AuditOutcome`** | crate-private, with `sent`, `rejected` | public: `Delivered`, `PartnerError`, `Indeterminate`, `Accepted`, `Duplicate` | stored records never had `sent` or `rejected`; remove them from your schema's enum |
+| **Duplicates, test service** | answered, not recorded | recorded (`duplicate`; test service `accepted`) | one more row per retransmission; a failing durable sink also withholds a duplicate's receipt |
+| **Issued receipt identity** | `signal.message_id`, `signal.timestamp` `null` | the receipt's `eb:MessageId` and `eb:Timestamp` (AS2: `Message-ID`, `signingTime`) | |
+| **One leg, one id** | the handler's `evidence()` and the stored record had two ids | one `record_id`; new `handed_off_at` (stored form) | join your handler's work to the stored record on `record_id` |
+| **AS2 MDN `Message-ID`** | minted for the header only | minted once, sent and recorded | |
+| **testkit** | `sample_records()` with `sent`, `rejected` | one per `AuditOutcome`, receipts and `handed_off_at` set | |
 
 ## 0.19 to 0.20: package `asx`
 

@@ -52,6 +52,56 @@ fn capture_responses(loopback: &Loopback) -> Arc<Mutex<Vec<Vec<u8>>>> {
     captured
 }
 
+const EB: &str = "http://docs.oasis-open.org/ebxml-msg/ebms/v3.0/ns/core/200704/";
+
+/// `(eb:MessageId, eb:Timestamp)` of a signal's `eb:SignalMessage`, read by
+/// an independent XML parse of the bytes on the wire (not the library's
+/// receipt builder).
+fn signal_identity(wire: &[u8]) -> (String, String) {
+    let text = std::str::from_utf8(wire).expect("a SOAP signal is UTF-8");
+    let doc = roxmltree::Document::parse(text).expect("the signal parses");
+    let info = doc
+        .descendants()
+        .find(|n| n.has_tag_name((EB, "SignalMessage")))
+        .and_then(|n| n.children().find(|c| c.has_tag_name((EB, "MessageInfo"))))
+        .expect("eb:SignalMessage/eb:MessageInfo");
+    let child = |name: &str| {
+        info.children()
+            .find(|c| c.has_tag_name((EB, name)))
+            .and_then(|c| c.text())
+            .unwrap_or_else(|| panic!("eb:{name}"))
+            .to_string()
+    };
+    (child("MessageId"), child("Timestamp"))
+}
+
+fn rfc3339_millis(t: std::time::SystemTime) -> String {
+    let ms = t.duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+    chrono_free_format(ms)
+}
+
+/// `YYYY-MM-DDTHH:MM:SS.mmmZ` of Unix milliseconds (civil-from-days, Howard
+/// Hinnant), so the test does not reuse the library's formatter.
+fn chrono_free_format(ms: i64) -> String {
+    let (secs, millis) = (ms.div_euclid(1000), ms.rem_euclid(1000));
+    let (days, tod) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{millis:03}Z",
+        tod / 3600,
+        tod % 3600 / 60,
+        tod % 60
+    )
+}
+
 fn triples(v: &Value) -> Vec<(String, String, String)> {
     v.as_array()
         .unwrap()
@@ -117,6 +167,18 @@ async fn as4_send_with_signed_nrr_receipt_leaves_one_delivered_record() {
     for (_, _, digest) in &nrr {
         assert!(text.contains(digest.as_str()), "{digest} is in the receipt");
     }
+    // The typed receipt: the partner's id and time, from the record.
+    let (receipt_id, receipt_ts) = signal_identity(&wire);
+    assert_eq!(receipt.message_id(), Some(receipt_id.as_str()));
+    assert_eq!(rfc3339_millis(receipt.timestamp().unwrap()), receipt_ts);
+    assert_eq!(receipt.evidence().receipt().as_ref(), Some(&*receipt));
+    assert_eq!(receipt.evidence().outcome(), asx::AuditOutcome::Delivered);
+    assert_eq!(receipt.evidence().handed_off_at(), None);
+    // The receiver recorded the same receipt it sent.
+    assert_eq!(
+        p.receiver_audit.records()[0].receipt().as_ref(),
+        Some(&*receipt)
+    );
     // The receipt signer.
     let receiver = p.b.signing.certificate();
     assert_eq!(receipt.signer(), &receiver);
@@ -150,6 +212,10 @@ async fn as4_send_answered_by_an_error_signal_leaves_a_partner_error_record() {
     assert_eq!(r["disposition"], "error");
     assert_eq!(r["signal"]["bytes"], b64(&wire));
     assert!(r["signal"]["message_id"].is_string());
+    // An eb:Error is not a receipt (GPKE: only a positive receipt counts).
+    let record = err.evidence().unwrap();
+    assert_eq!(record.outcome(), asx::AuditOutcome::PartnerError);
+    assert_eq!(record.receipt(), None);
 }
 
 /// A response that verifies as neither: `indeterminate`, with the bytes.
@@ -237,17 +303,79 @@ async fn as4_receive_leaves_an_accepted_record_before_the_claim_is_settled() {
         .collect();
     assert!(uris.iter().any(|u| u.starts_with("cid:")), "{uris:?}");
     assert!(uris.iter().any(|u| u.starts_with('#')), "{uris:?}");
-    // The receipt the receiver issued, exactly as sent.
+    // The receipt the receiver issued, exactly as sent, with its own id and
+    // time as written in it.
     assert_eq!(r["signal"]["bytes"], b64(&wire));
     assert_eq!(r["signal"]["ref_to_message_id"], "audit-inbound@asx.test");
     assert_eq!(r["signal"]["signed"], true);
+    let (receipt_id, receipt_ts) = signal_identity(&wire);
+    assert_eq!(r["signal"]["message_id"], receipt_id.as_str());
+    assert_eq!(r["signal"]["timestamp"], receipt_ts.as_str());
+    assert_eq!(
+        receipt_ts.len(),
+        "2026-11-27T22:59:59.400Z".len(),
+        "{receipt_ts}"
+    );
+    let record = &p.receiver_audit.records()[0];
+    assert_eq!(record.outcome(), asx::AuditOutcome::Accepted);
+    let receipt = record.receipt().expect("a positive receipt");
+    assert_eq!(receipt.message_id(), Some(receipt_id.as_str()));
+    assert_eq!(rfc3339_millis(receipt.timestamp().unwrap()), receipt_ts);
+    let handed_off = record.handed_off_at().expect("the handler ran");
+    assert!(
+        handed_off <= receipt.timestamp().unwrap(),
+        "handoff, then receipt"
+    );
+}
+
+/// The handler's `evidence()` and the stored record are one leg: one
+/// `record_id`, and the handler's `recorded_at` is the stored `handed_off_at`.
+#[tokio::test]
+async fn the_handler_and_the_sink_see_one_record_id() {
+    let p = pair(Preset::Bdew);
+    p.sender
+        .send(Preset::Bdew.message(&p.to_b, b"x"))
+        .await
+        .expect("delivered");
+    let request = p.loopback.last_request().unwrap();
+    let sink = MemoryAuditSink::new();
+    let receiver = ported::client(
+        Preset::Bdew.profile(),
+        &p.ca,
+        &p.b,
+        p.a.partner(peers::A_URL),
+        &Loopback::new(),
+        |b| b.audit(sink.clone()),
+    );
+    let seen: Arc<Mutex<Vec<AuditRecord>>> = Arc::default();
+    let inbound = {
+        let seen = seen.clone();
+        receiver.inbound(
+            asx::MemoryDedup::default(),
+            move |m: asx::Verified<asx::as4::UserMessage>| {
+                seen.lock().unwrap().push(m.evidence().clone());
+                async { Ok::<(), asx::Reject>(()) }
+            },
+        )
+    };
+    let (status, _) = ported::post(&inbound, request).await;
+    assert_eq!(status, http::StatusCode::OK);
+    let handler = seen.lock().unwrap().pop().expect("the handler ran");
+    let stored = sink.records().pop().expect("one record");
+    assert_eq!(handler.record_id(), stored.record_id());
+    assert_eq!(handler.receipt(), None, "not issued at handoff");
+    assert_eq!(handler.signal(), None);
+    assert_eq!(handler.handed_off_at(), stored.handed_off_at());
+    let at_handoff = serde_json::to_value(&handler).unwrap();
+    assert_eq!(at_handoff["recorded_at"], at_handoff["handed_off_at"]);
+    assert!(stored.receipt().is_some());
 }
 
 /// (g) A retransmission of an accepted message is answered with a fresh
-/// receipt but is not a new accepted message: no second record (one record
-/// per accepted inbound message).
+/// receipt, recorded as `duplicate`: the sender may hold only this receipt,
+/// whose time is the GPKE ÜZ. The handler does not run again.
 #[tokio::test]
-async fn a_retransmission_after_accept_leaves_no_second_record() {
+async fn a_retransmission_is_recorded_as_a_duplicate_with_its_fresh_receipt() {
     let p = pair(Preset::Bdew);
     p.sender
         .send(Preset::Bdew.message(&p.to_b, b"x"))
@@ -257,8 +385,167 @@ async fn a_retransmission_after_accept_leaves_no_second_record() {
     let inbound = ported::accepting_inbound(&p.receiver, peers::SharedDedup(p.dedup.clone()));
     let (status, body) = ported::post(&inbound, request).await;
     assert_eq!(status, http::StatusCode::OK);
-    assert!(String::from_utf8_lossy(&body).contains("Receipt"));
+    assert_eq!(p.calls.load(Ordering::SeqCst), 1, "the handler ran once");
+    let records = p.receiver_audit.records();
+    assert_eq!(records.len(), 2);
+    let (first, again) = (&records[0], &records[1]);
+    assert_eq!(first.outcome(), asx::AuditOutcome::Accepted);
+    assert_eq!(again.outcome(), asx::AuditOutcome::Duplicate);
+    assert_eq!(again.message_id(), first.message_id());
+    assert_ne!(again.record_id(), first.record_id());
+    assert_eq!(again.handed_off_at(), None, "the handler did not run");
+    assert_eq!(again.signal(), Some(body.as_ref()), "the receipt as sent");
+    let (id, ts) = signal_identity(&body);
+    let receipt = again.receipt().expect("a duplicate's receipt is positive");
+    assert_eq!(receipt.message_id(), Some(id.as_str()));
+    assert_eq!(rfc3339_millis(receipt.timestamp().unwrap()), ts);
+    let earlier = first.receipt().unwrap();
+    assert_ne!(
+        earlier.message_id(),
+        receipt.message_id(),
+        "a fresh receipt"
+    );
+    assert!(receipt.timestamp() >= earlier.timestamp());
+}
+
+/// A durable sink that fails on a duplicate withholds its receipt: the
+/// retryable storage failure, never an unrecorded receipt.
+#[tokio::test]
+async fn a_failing_durable_sink_withholds_a_duplicates_receipt() {
+    let p = pair(Preset::Bdew);
+    p.sender
+        .send(Preset::Bdew.message(&p.to_b, b"x"))
+        .await
+        .expect("delivered");
+    let request = p.loopback.last_request().unwrap();
+    let failing = ported::client(
+        Preset::Bdew.profile(),
+        &p.ca,
+        &p.b,
+        p.a.partner(peers::A_URL),
+        &Loopback::new(),
+        |b| b.audit(FailingSink(AuditDurability::Durable)),
+    );
+    let (status, body) = ported::post(
+        &ported::accepting_inbound(&failing, peers::SharedDedup(p.dedup.clone())),
+        request,
+    )
+    .await;
+    assert_eq!(status, http::StatusCode::INTERNAL_SERVER_ERROR);
+    let text = String::from_utf8_lossy(&body);
+    assert!(!text.contains("Receipt>"), "no receipt: {text}");
+    assert!(text.contains("EBMS:0004"), "{text}");
+}
+
+/// The test service is receipted, not delivered, and its receipt is recorded
+/// (outcome accepted, no handoff).
+#[tokio::test]
+async fn a_test_service_receipt_is_recorded() {
+    let p = pair(Preset::Bdew);
+    let receipt = p
+        .sender
+        .send(
+            asx::as4::Message::ping(&p.to_b).payload(asx::Payload::new(&b"ping"[..], "text/plain")),
+        )
+        .await
+        .expect("a ping is receipted");
+    assert_eq!(p.calls.load(Ordering::SeqCst), 0, "never delivered");
+    let r = p.receiver_audit.records();
+    assert_eq!(r.len(), 1);
+    assert_eq!(r[0].outcome(), asx::AuditOutcome::Accepted);
+    assert_eq!(r[0].handed_off_at(), None);
+    assert_eq!(
+        r[0].receipt().as_ref(),
+        Some(&*receipt),
+        "the receipt the sender verified"
+    );
+}
+
+/// Every receipt the receiver signs has a record: accepted, duplicate and test
+/// service, counted at the signer.
+#[tokio::test]
+async fn every_signed_receipt_has_a_record() {
+    #[derive(Debug)]
+    struct Counting(asx::KeyPair, Arc<std::sync::atomic::AtomicUsize>);
+    impl asx::Signer for Counting {
+        fn certificate_chain(&self) -> &[asx::Certificate] {
+            self.0.certificate_chain()
+        }
+        fn sign<'a>(
+            &'a self,
+            algorithm: asx::SignatureAlgorithm,
+            data: &'a [u8],
+        ) -> asx::BoxFuture<'a, Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>> {
+            self.1.fetch_add(1, Ordering::SeqCst);
+            self.0.sign(algorithm, data)
+        }
+    }
+    let p = pair(Preset::Bdew);
+    p.sender
+        .send(Preset::Bdew.message(&p.to_b, b"x"))
+        .await
+        .expect("delivered");
+    let request = p.loopback.last_request().unwrap();
+    p.sender
+        .send(
+            asx::as4::Message::ping(&p.to_b).payload(asx::Payload::new(&b"ping"[..], "text/plain")),
+        )
+        .await
+        .expect("pinged");
+    let ping = p.loopback.last_request().unwrap();
+
+    let signs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let sink = MemoryAuditSink::new();
+    let mut local = asx::LocalParty::new(&p.b.id)
+        .signer(Counting(p.b.signing.key_pair(), signs.clone()))
+        .decrypter(p.b.encryption.key_pair())
+        .tls_identity(p.b.tls.key_pair());
+    if let Some(t) = &p.b.party_type {
+        local = local.party_type(t);
+    }
+    let receiver = asx::as4::As4::builder(Preset::Bdew.profile())
+        .local(local)
+        .trust_anchor(p.ca.anchor())
+        .partner(p.a.partner(peers::A_URL))
+        .http_client(Loopback::new())
+        .audit(sink.clone())
+        .build()
+        .expect("builds");
+    let inbound = ported::accepting_inbound(&receiver, asx::MemoryDedup::default());
+    for req in [ported::clone_request(&request), request, ping] {
+        let (status, _) = ported::post(&inbound, req).await;
+        assert_eq!(status, http::StatusCode::OK);
+    }
+    let outcomes: Vec<_> = sink.records().iter().map(AuditRecord::outcome).collect();
+    use asx::AuditOutcome::{Accepted, Duplicate};
+    assert_eq!(outcomes, [Accepted, Duplicate, Accepted]);
+    assert_eq!(
+        signs.load(Ordering::SeqCst),
+        outcomes.len(),
+        "one record per signature"
+    );
+}
+
+/// An unauthenticated retransmission of an accepted message id (a signed
+/// property altered) is refused before the dedup claim: no duplicate record,
+/// no receipt.
+#[tokio::test]
+async fn an_unauthenticated_retransmission_writes_no_duplicate_record() {
+    let p = pair(Preset::Bdew);
+    p.sender
+        .send(Preset::Bdew.message(&p.to_b, b"x"))
+        .await
+        .expect("delivered");
     assert_eq!(p.receiver_audit.records().len(), 1);
+    let mut request = p.loopback.last_request().unwrap();
+    let body = String::from_utf8_lossy(request.body()).into_owned();
+    let forged = body.replacen("ABC123", "ABC124", 1);
+    assert_ne!(forged, body, "a signed BDEW part property");
+    *request.body_mut() = bytes::Bytes::from(forged);
+    let inbound = ported::accepting_inbound(&p.receiver, peers::SharedDedup(p.dedup.clone()));
+    let (status, _) = ported::post(&inbound, request).await;
+    assert_eq!(status, http::StatusCode::BAD_REQUEST);
+    assert_eq!(p.receiver_audit.records().len(), 1, "no duplicate record");
 }
 
 /// (h) An unauthenticated sender cannot write to the durable store.
@@ -350,6 +637,63 @@ async fn a_failing_durable_sink_fails_the_receive_and_leaves_the_claim_unsettled
     assert_eq!(status, http::StatusCode::OK, "the retransmission");
     let r = only(&sink);
     assert_eq!(r["outcome"], "accepted", "processed again, not a duplicate");
+}
+
+/// A leg whose record was never written never reuses its id: the retry's
+/// handler sees a new `record_id`, and the store holds exactly that one.
+#[tokio::test]
+async fn a_failed_leg_never_reuses_its_record_id() {
+    let p = pair(Preset::Bdew);
+    p.sender
+        .send(Preset::Bdew.message(&p.to_b, b"x"))
+        .await
+        .expect("delivered");
+    let request = p.loopback.last_request().unwrap();
+    let dedup = Arc::new(asx::MemoryDedup::default());
+    let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+    let handler = |seen: Arc<Mutex<Vec<String>>>| {
+        move |m: asx::Verified<asx::as4::UserMessage>| {
+            seen.lock()
+                .unwrap()
+                .push(m.evidence().record_id().to_string());
+            async { Ok::<(), asx::Reject>(()) }
+        }
+    };
+    let failing = ported::client(
+        Preset::Bdew.profile(),
+        &p.ca,
+        &p.b,
+        p.a.partner(peers::A_URL),
+        &Loopback::new(),
+        |b| b.audit(FailingSink(AuditDurability::Durable)),
+    );
+    let (status, _) = ported::post(
+        &failing.inbound(peers::SharedDedup(dedup.clone()), handler(seen.clone())),
+        ported::clone_request(&request),
+    )
+    .await;
+    assert_eq!(status, http::StatusCode::INTERNAL_SERVER_ERROR);
+    let sink = MemoryAuditSink::new();
+    let working = ported::client(
+        Preset::Bdew.profile(),
+        &p.ca,
+        &p.b,
+        p.a.partner(peers::A_URL),
+        &Loopback::new(),
+        |b| b.audit(sink.clone()),
+    );
+    let (status, _) = ported::post(
+        &working.inbound(peers::SharedDedup(dedup), handler(seen.clone())),
+        request,
+    )
+    .await;
+    assert_eq!(status, http::StatusCode::OK);
+    let ids = seen.lock().unwrap().clone();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1]);
+    let stored = sink.records();
+    assert_eq!(stored.len(), 1);
+    assert_eq!(stored[0].record_id(), ids[1]);
 }
 
 /// (m) A durable sink that fails after the receipt verified fails the send

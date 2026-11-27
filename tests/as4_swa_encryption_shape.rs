@@ -104,7 +104,8 @@ fn reference_digests(soap: &str) -> Vec<(String, String)> {
 /// `wsse:Security`, outside every signed subtree). The ConcatKDF golden is
 /// `xmlenc::kdf::tests::concat_kdf_bdew_golden_is_unchanged`. The
 /// `eb:Messaging` digest covers the part's RzÜ AS4 2.6 Kap. 6 properties
-/// (`BDEWDocumentType`, `BDEWDocumentDate`, `BDEWDocumentNo`).
+/// (`BDEWDocumentType`, `BDEWDocumentDate`, `BDEWDocumentNo`) and the
+/// millisecond `eb:Timestamp` (`….000Z`).
 #[tokio::test]
 async fn messaging_and_body_digests_golden_is_unchanged() {
     let (_, body) = sent_bdew(&[b"UNB+UNOC:3"]).await;
@@ -119,7 +120,7 @@ async fn messaging_and_body_digests_golden_is_unchanged() {
         vec![
             (
                 "#as4-messaging".to_string(),
-                "eiF1Qug3s8eojZbrTzUjqQ8c7FgsA2VPCPLO/Vy+fVw=".to_string()
+                "EvilqCta19G32h1198K+zHwtvty/oSWFVUw3GX6lqWc=".to_string()
             ),
             (
                 "#as4-body".to_string(),

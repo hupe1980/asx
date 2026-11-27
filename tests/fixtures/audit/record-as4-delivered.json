@@ -5,6 +5,7 @@
   "disposition": "receipt",
   "ebms_code": null,
   "error_kind": null,
+  "handed_off_at": null,
   "local_party": "audit-sender",
   "message_id": "urn:uuid:audit-golden@asx.test",
   "message_timestamp": "<volatile>",

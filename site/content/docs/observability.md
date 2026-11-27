@@ -19,7 +19,7 @@ The application installs a subscriber and a recorder, for example:
 
 ```toml
 [dependencies]
-asx = { version = "0.20", features = ["metrics"] }
+asx = { version = "0.21", features = ["metrics"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 metrics-exporter-prometheus = "0.17"
 ```
@@ -139,18 +139,34 @@ Install an [`AuditSink`](https://docs.rs/asx/latest/asx/trait.AuditSink.html) pe
 | AS4 send, response unverifiable | outbound / `indeterminate` | the response bytes, if any |
 | AS2 send (or `verify_async_mdn`) answered by an MDN | outbound / `delivered`, `partner_error` or `indeterminate` | the MDN |
 | AS4 or AS2 receive, handler returned `Ok` | inbound / `accepted` | the receipt or MDN issued for it |
-| Duplicate, in flight, or refused (before or after authentication) | — | no record |
+| AS4 test-service message | inbound / `accepted` | the receipt issued for it |
+| AS4 or AS2 duplicate (authenticated) | inbound / `duplicate` | the fresh receipt or MDN issued for it |
+| In flight, or refused (before or after authentication) | — | no record |
 
-A record is written **before** an inbound dedup claim is accepted and before a verified receipt or MDN is returned to you.
+Every positive receipt or MDN asx signs has a record, and a record is written **before** that receipt leaves: before an inbound dedup claim is accepted, and before a verified receipt or MDN is returned to you. A failing durable sink withholds the receipt (HTTP 500, `EBMS:0004`; AS2: HTTP 500), so a receipt never exists without its record.
+
+One inbound leg has one `record_id`: the handler's `Verified::evidence()` (at handoff, without a signal) and the stored record share it. A leg that fails before its record is written never reuses its id.
 
 ### The stored form
 
-`AuditRecord` is opaque; a sink stores its serde form. Bytes are standard base64 with padding, digests lowercase hex, `recorded_at` RFC 3339 UTC with three fractional digits, absent values `null`, enums snake_case; unknown fields are ignored on read, so newer records still load. Index accessors: `record_id()` (UUIDv7, the idempotency key), `message_id()`, `partner()`, `signal()`.
+`AuditRecord` is opaque; a sink stores its serde form. Bytes are standard base64 with padding, digests lowercase hex, `recorded_at` and `handed_off_at` RFC 3339 UTC with three fractional digits, absent values `null`, enums snake_case; unknown fields are ignored on read, so newer records still load.
+
+| Accessor | Returns |
+|---|---|
+| `record_id()` | UUIDv7, the idempotency key; one per leg |
+| `message_id()` | the user message's `eb:MessageId` / AS2 `Message-ID` |
+| `partner()` | the counterparty's configured id |
+| `outcome()` | `AuditOutcome`: `Delivered`, `PartnerError`, `Indeterminate` (send); `Accepted`, `Duplicate` (receive) |
+| `receipt()` | the positive receipt (`message_id()`, `timestamp()`) on `Delivered`, `Accepted` and `Duplicate`; `None` otherwise |
+| `handed_off_at()` | when the handler got the message (`Accepted` legs whose handler ran) |
+| `signal()` | the receipt, MDN or `eb:Error` bytes as on the wire |
+
+`signal.message_id` and `signal.timestamp` are the signal's own values as written: for a receipt asx issues, the `eb:MessageId` and the millisecond `eb:Timestamp` it signed (AS2: the `Message-ID` header and the CMS `signingTime`). A received AS2 MDN records neither: its `Message-ID` is not signed.
 
 ```json
 {
   "record_id": "01929d3e-6a1b-7c3e-9f00-3b5c2e4d1a77",
-  "recorded_at": "2026-10-16T09:30:12.345Z",
+  "recorded_at": "2026-10-16T09:30:12.345Z", "handed_off_at": null,
   "protocol": "as4", "direction": "outbound", "outcome": "delivered",
   "message_id": "c2a1f6e0-…@sender.example", "ref_to_message_id": null,
   "conversation_id": "conv-1", "local_party": "9900000000001", "partner": "9900000000002",

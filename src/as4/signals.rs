@@ -63,7 +63,7 @@ pub fn generate_receipt_with_nri(
         ref_to_message_id,
     )?;
 
-    let timestamp = crate::time_utils::format_rfc3339_secs(session.clock().now());
+    let timestamp = crate::time_utils::format_rfc3339_millis(session.clock().now());
     let namespaces: &[(&'static str, &'static str)] = if nri_refs.is_empty() {
         &[("ebbpsig", ns::EBBP_SIGNALS)]
     } else {
@@ -262,7 +262,7 @@ pub fn generate_signed_receipt_with_nri(
         &credentials.signing_cert_pem,
     )?;
 
-    let timestamp = crate::time_utils::format_rfc3339_secs(session.clock().now());
+    let timestamp = crate::time_utils::format_rfc3339_millis(session.clock().now());
     let (doc, slot) = write_signal(
         &SignalEnvelope {
             namespaces: &[
@@ -363,7 +363,7 @@ pub fn generate_error_signal(
         ));
     }
 
-    let timestamp = crate::time_utils::format_rfc3339_secs(session.clock().now());
+    let timestamp = crate::time_utils::format_rfc3339_millis(session.clock().now());
     let (doc, _) = write_signal(
         &SignalEnvelope {
             namespaces: &[],
@@ -421,7 +421,7 @@ pub(crate) fn draft_receipt(
     nri_refs: &[As4NriReference],
     algorithm: crate::crypto::alg::SignatureAlgorithm,
 ) -> Result<SignalDraft> {
-    let timestamp = crate::time_utils::format_rfc3339_secs(now);
+    let timestamp = crate::time_utils::format_rfc3339_millis(now);
     let (doc, slot) = write_signal(
         &SignalEnvelope {
             namespaces: &[
@@ -502,7 +502,7 @@ pub(crate) fn error_signal(
     description: &str,
     detail: Option<&str>,
 ) -> Result<Vec<u8>> {
-    let timestamp = crate::time_utils::format_rfc3339_secs(now);
+    let timestamp = crate::time_utils::format_rfc3339_millis(now);
     let (doc, _) = write_signal(
         &SignalEnvelope {
             namespaces: &[],

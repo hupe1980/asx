@@ -17,6 +17,50 @@ Versioning follows the [SemVer policy](#semver-policy) below.
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-11-27
+
+Every positive receipt identified, timed and recorded: the receipt's own id
+and `eb:Timestamp` are the GPKE time of receipt (Teil 1 Kap. 7). A hard cut;
+see the [migration page](https://hupe1980.github.io/asx/docs/migration/).
+
+### Wire / crypto
+
+- **`eb:Timestamp` in milliseconds.** Every `eb:Timestamp` asx writes (user
+  messages, receipts, error signals) is `YYYY-MM-DDThh:mm:ss.mmmZ`, so a
+  receipt is never stamped before the handoff it acknowledges and two receipts
+  within a second are ordered. Signed `eb:Messaging` digests change with it.
+- **`eb:Timestamp` read as `xsd:dateTime`.** Without a zone designator it is
+  UTC (ebMS3 §5.2.2.1); a fraction without digits (`….Z`) and anything after
+  the zone are refused. The same strictness applies to `wsu:Timestamp`, which
+  keeps its required designator.
+- **AS2 MDN `Message-ID`** is minted once per MDN and recorded with it.
+
+### API
+
+- **`Receipt::message_id()`, `Receipt::timestamp()`**: the receipt's own id and
+  time, read from the verified signal. `send` returns the partner's; a received
+  AS2 MDN exposes neither (its `Message-ID` is unsigned).
+- **`AuditRecord::outcome()`** and the public **`AuditOutcome`** (`Delivered`,
+  `PartnerError`, `Indeterminate`, `Accepted`, `Duplicate`). The never-written
+  `sent` and `rejected` are gone.
+- **`AuditRecord::receipt()`**: the positive receipt of a leg, equal to the one
+  `send` returns; `None` for an `eb:Error`, a negative MDN or a failure.
+- **`AuditRecord::handed_off_at()`** and the stored field `handed_off_at`: when
+  the handler got the message.
+- **One `record_id` per inbound leg**, shared by the handler's
+  `Verified::evidence()` and the stored record.
+- **Duplicates and the AS4 test service are recorded** (`duplicate`,
+  `accepted`) with the receipt or MDN issued for them; a failing durable sink
+  withholds that receipt. Issued receipts record their `eb:MessageId` and
+  `eb:Timestamp` (AS2: `Message-ID` and `signingTime`), and inbound AS4
+  records carry `disposition: "receipt"` like outbound ones.
+- **testkit:** `sample_records()` holds one record per `AuditOutcome`.
+- **Packaging:** the crate is published from an `include` allowlist (library,
+  examples, the rustdoc-included documents, the one fixture `testkit` reads);
+  CI workflows, scripts and the test suite are no longer shipped.
+- **Fixed:** the `peppol` feature without `http-client`, and `http-client`
+  alone, build again.
+
 ## [0.20.0] — 2026-11-22
 
 The package is renamed from `asx-rs` to `asx`. No code change; see the

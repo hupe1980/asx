@@ -137,3 +137,19 @@ fn timestamp_more_than_300_s_in_the_future_is_refused() {
         .expect_err("301 s ahead");
     assert_eq!(err.code, ErrorCode::SecurityVerificationFailed);
 }
+
+/// ebMS3 §5.2.2.1: a user message's `eb:Timestamp` without a zone designator
+/// is UTC, so the window judges it like the `Z` form; a fraction without
+/// digits is not an `xsd:dateTime` and is refused as unparseable.
+#[test]
+fn a_designator_less_user_message_timestamp_is_utc() {
+    let now = crate::clock::system().now();
+    let clock = crate::clock::ManualClock::at(now);
+    let written = crate::time_utils::format_rfc3339_millis(now);
+    let mut parsed = stamped(now);
+    parsed.timestamp = Some(written.trim_end_matches('Z').to_string());
+    judged(&parsed, &clock).expect("no designator is UTC and fresh");
+    parsed.timestamp = Some(format!("{}.Z", &written[..19]));
+    let err = judged(&parsed, &clock).expect_err("an empty fraction");
+    assert_eq!(err.code, ErrorCode::ParseFailed);
+}

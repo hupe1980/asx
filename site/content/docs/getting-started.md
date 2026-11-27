@@ -8,7 +8,7 @@ aliases = ["/docs/reliability/"]
 
 ```toml
 [dependencies]
-asx = "0.20"
+asx = "0.21"
 ```
 
 The package is `asx`; the library is `asx`. Features are additive and none
@@ -77,7 +77,9 @@ async fn send(partner: Partner, sig: KeyPair, enc: KeyPair, tls: KeyPair, root: 
 `send` compresses, signs, encrypts, posts and verifies the answer. It returns
 `Ok(Verified<Receipt>)` only for a receipt signed by a pinned partner
 certificate that refers to your message id and echoes the digests you signed
-([details](@/docs/as4.md#receipts-are-evidence)). Store `receipt.evidence()`:
+([details](@/docs/as4.md#receipts-are-evidence)). `receipt.message_id()` and
+`receipt.timestamp()` are the partner's receipt id and time
+([receipt time](@/docs/as4.md#receipt-time)). Store `receipt.evidence()`:
 it is the audit record ([stored form](@/docs/observability.md#the-stored-form)).
 
 The partner is a plain value. Under BDEW its endpoint is the URI

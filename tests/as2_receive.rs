@@ -143,10 +143,17 @@ async fn processed_mdn_is_signed_and_carries_the_mic_over_the_signed_entity() {
 async fn duplicate_is_answered_duplicate_document_without_calling_the_handler() {
     let p = pair();
     let captured: Arc<std::sync::Mutex<Vec<bytes::Bytes>>> = Arc::default();
+    let message_ids: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
     {
-        let captured = captured.clone();
-        p.loopback
-            .intercept(move |resp| captured.lock().unwrap().push(resp.body().clone()));
+        let (captured, message_ids) = (captured.clone(), message_ids.clone());
+        p.loopback.intercept(move |resp| {
+            captured.lock().unwrap().push(resp.body().clone());
+            let id = resp.headers()["message-id"].to_str().unwrap();
+            message_ids
+                .lock()
+                .unwrap()
+                .push(id.trim_matches(['<', '>']).to_string());
+        });
     }
     let first = p
         .sender
@@ -171,7 +178,31 @@ async fn duplicate_is_answered_duplicate_document_without_calling_the_handler() 
     );
     assert!(field(&mdn, "Received-Content-MIC").is_some());
     assert_ne!(first.evidence().record_id(), second.evidence().record_id());
-    assert_eq!(p.receiver_audit.records().len(), 1);
+    // A received MDN's Message-ID is an unsigned header: no receipt identity.
+    for received in [&first, &second] {
+        assert_eq!(received.message_id(), None);
+        assert_eq!(received.timestamp(), None);
+        assert_eq!(received.evidence().receipt().as_ref(), Some(&**received));
+    }
+    // The duplicate's MDN is recorded too: the sender may hold only it.
+    let records = p.receiver_audit.records();
+    assert_eq!(records.len(), 2);
+    let (accepted, duplicate) = (&records[0], &records[1]);
+    assert_eq!(accepted.outcome(), asx::AuditOutcome::Accepted);
+    assert_eq!(duplicate.outcome(), asx::AuditOutcome::Duplicate);
+    assert_eq!(duplicate.message_id(), accepted.message_id());
+    assert_ne!(duplicate.record_id(), accepted.record_id());
+    assert!(accepted.handed_off_at().is_some());
+    assert_eq!(duplicate.handed_off_at(), None, "the handler did not run");
+    let (a, d) = (accepted.receipt().unwrap(), duplicate.receipt().unwrap());
+    assert_ne!(a.message_id(), d.message_id(), "a fresh MDN");
+    assert!(a.message_id().is_some() && d.timestamp() >= a.timestamp());
+    assert_eq!(duplicate.signal(), Some(mdn.as_ref()));
+    // The recorded Message-ID is the one the MDN response carried.
+    let sent = message_ids.lock().unwrap().clone();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(a.message_id(), Some(sent[0].as_str()));
+    assert_eq!(d.message_id(), Some(sent[1].as_str()));
 }
 
 #[tokio::test]

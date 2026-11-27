@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the published package, not the working tree: unpack the .crate
 # outside the workspace and check it with every feature. Fails when a file a
-# feature needs is left out of the package (an `exclude` pattern, a path).
+# feature needs is left out of the package (the `include` allowlist, a path).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 version=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)

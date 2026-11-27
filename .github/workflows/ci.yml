@@ -48,6 +48,11 @@ jobs:
       - run: cargo hack check --locked -p asx --each-feature --lib --tests
         env:
           RUSTFLAGS: -D warnings
+      # The library alone: the dev-dependencies enable `test-util` on every
+      # `--tests` build and would hide a missing feature gate.
+      - run: cargo hack check -p asx --each-feature --no-dev-deps --lib
+        env:
+          RUSTFLAGS: -D warnings
 
   msrv:
     runs-on: ubuntu-latest

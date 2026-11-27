@@ -27,8 +27,13 @@ lint:
     bash scripts/concepts-check.sh
 
 # No default features, each feature alone, all features (needs cargo-hack).
+# The second pass drops the dev-dependencies: they enable `test-util` (and with
+# it as2, as4, http-client) on every `--tests` build, which hides a missing gate
+# in library code. cargo-hack edits Cargo.toml while it runs: run no other cargo
+# command meanwhile. `--locked` does not apply to the trimmed manifest.
 features:
     RUSTFLAGS='-D warnings' CARGO_TARGET_DIR=target/features cargo hack check --locked -p asx --each-feature --lib --tests
+    RUSTFLAGS='-D warnings' CARGO_TARGET_DIR=target/features cargo hack check -p asx --each-feature --no-dev-deps --lib
 
 # Build on the MSRV floor (Cargo.toml rust-version).
 msrv:
@@ -60,7 +65,7 @@ interop:
     done
 
 # `bash scripts/public-api-check.sh --update` rewrites tests/public-api.txt.
-[doc('Public-API gate: snapshot, at most 161 items, no deleted name (nightly + cargo-public-api)')]
+[doc('Public-API gate: snapshot, at most 172 items, no deleted name (nightly + cargo-public-api)')]
 public-api:
     bash scripts/public-api-check.sh
 

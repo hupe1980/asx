@@ -748,14 +748,18 @@ fn check_receipt_freshness(
         ));
     };
 
-    let Some(ts_secs) = crate::time_utils::parse_rfc3339_to_unix_secs(timestamp) else {
+    let Some(ts_secs) =
+        crate::time_utils::parse_xsd_datetime(timestamp).map(crate::time_utils::unix_secs)
+    else {
         return Err(reject(
             session,
             message_id,
             "semantic_interop_failure",
             "receipt_timestamp_unparseable",
             ErrorCode::ParseFailed,
-            format!("AS4 receipt eb:Timestamp '{timestamp}' is not a valid RFC 3339 timestamp"),
+            format!(
+                "AS4 receipt eb:Timestamp '{timestamp}' is not an xsd:dateTime (ebMS3 §5.2.2.1)"
+            ),
         ));
     };
 
@@ -1098,6 +1102,60 @@ mod tests {
     /// Self-signed RSA keypair, generated inline rather than via
     /// `crate::fixtures` so these tests also run in the `as4`-without-`testing`
     /// feature lanes.
+    /// `xml` with its one `eb:Timestamp` element's text replaced by `value`
+    /// (`None` removes the element), whatever precision it was written with.
+    fn with_eb_timestamp(xml: &[u8], value: Option<&str>) -> String {
+        let xml = String::from_utf8(xml.to_vec()).expect("utf8");
+        let open = xml.find("<eb:Timestamp>").expect("an eb:Timestamp");
+        let close = xml[open..].find("</eb:Timestamp>").expect("closed") + open;
+        let end = close + "</eb:Timestamp>".len();
+        match value {
+            Some(v) => format!(
+                "{}<eb:Timestamp>{v}</eb:Timestamp>{}",
+                &xml[..open],
+                &xml[end..]
+            ),
+            None => format!("{}{}", &xml[..open], &xml[end..]),
+        }
+    }
+
+    /// A receipt `generate_receipt_with_nri` builds carries `eb:Timestamp` as
+    /// `xsd:dateTime` with designator omitted: fresh, read as UTC (ebMS3
+    /// §5.2.2.1); an empty fraction is refused as unparseable.
+    #[test]
+    fn a_designator_less_receipt_timestamp_is_utc_and_an_empty_fraction_is_refused() {
+        let (cert_pem, key_pem) = keypair();
+        let session = session_trusting(&cert_pem);
+        let sent = sent_output("msg-utc@example", &cert_pem, &key_pem);
+        let receipt = generate_receipt_with_nri(
+            &session,
+            "receipt-utc@partner",
+            &sent.message_id,
+            &sent_nri(&sent),
+        )
+        .expect("receipt");
+        let now = crate::time_utils::format_rfc3339_millis(crate::clock::system().now());
+        let bare = now.trim_end_matches('Z').to_string();
+        let mut policy = views::as4_receipt();
+        policy.require_signed_receipt = false;
+        verify(
+            &session,
+            &sent,
+            with_eb_timestamp(&receipt, Some(&bare)).as_bytes(),
+            &policy,
+        )
+        .expect("a designator-less timestamp is UTC and fresh");
+        let empty = format!("{}.Z", &now[..19]);
+        let err = verify(
+            &session,
+            &sent,
+            with_eb_timestamp(&receipt, Some(&empty)).as_bytes(),
+            &policy,
+        )
+        .expect_err("an empty fraction is not an xsd:dateTime");
+        assert_eq!(err.code, ErrorCode::ParseFailed, "{}", err.message);
+    }
+
     fn keypair() -> (Vec<u8>, Vec<u8>) {
         use openssl::asn1::Asn1Time;
         use openssl::bn::BigNum;
@@ -1717,10 +1775,7 @@ mod tests {
             &sent_nri(&sent),
         )
         .expect("receipt");
-        let stale = String::from_utf8(receipt).expect("utf8").replace(
-            &crate::time_utils::format_rfc3339_secs(crate::clock::system().now()),
-            "2001-01-01T00:00:00Z",
-        );
+        let stale = with_eb_timestamp(&receipt, Some("2001-01-01T00:00:00Z"));
 
         let mut policy = views::as4_receipt();
         policy.require_signed_receipt = false;
@@ -1893,10 +1948,7 @@ xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\">\
             &sent_nri(&sent),
         )
         .expect("receipt");
-        let ts = crate::time_utils::format_rfc3339_secs(crate::clock::system().now());
-        let without_ts = String::from_utf8(receipt)
-            .expect("utf8")
-            .replace(&format!("<eb:Timestamp>{ts}</eb:Timestamp>"), "");
+        let without_ts = with_eb_timestamp(&receipt, None);
 
         let mut policy = views::as4_receipt();
         policy.require_signed_receipt = false;

@@ -134,6 +134,34 @@ same message). An `eb:Error` signal is `ErrorKind::PartnerError` with
 `ebms_code()`. `receipt.evidence()` holds the receipt bytes as received, their
 SHA-256 and the NRR digest list.
 
+### Receipt time
+
+A positive receipt carries its own `eb:MessageId` and `eb:Timestamp`. GPKE
+Teil 1 Kap. 7 takes the day and time of receipt (ÜT, ÜZ) from it.
+
+- **Send**: `receipt.message_id()`, `receipt.timestamp()`, the partner's values.
+- **Receive**: per stored record, `receipt()` is the receipt issued,
+  `handed_off_at()` the handoff to your handler, and `outcome()` tells
+  `Accepted` from `Duplicate`.
+
+```rust
+use asx::{AuditOutcome, AuditRecord};
+
+/// What a deadline calculation needs from one stored record.
+fn receipt_time(record: &AuditRecord) -> Option<(AuditOutcome, String, std::time::SystemTime)> {
+    let receipt = record.receipt()?; // None for eb:Error, negative MDNs, failures
+    Some((record.outcome(), receipt.message_id()?.to_owned(), receipt.timestamp()?))
+}
+```
+
+The values are UTC instants. Local time and day counting are yours. When a
+handler crosses midnight, the handoff and the receipt fall on two days, and
+the receipt's day counts. Each retransmission gets a fresh receipt, recorded
+as `duplicate`. The sender may hold only that one.
+
+asx writes `eb:Timestamp` with milliseconds. Without `Z` it is read as UTC
+(ebMS3 §5.2.2.1).
+
 ## Receiving
 
 [`As4::inbound(dedup, handler)`](https://docs.rs/asx/latest/asx/as4/struct.As4.html#method.inbound)
@@ -145,6 +173,8 @@ The handler is any `Fn(Verified<UserMessage>) -> impl Future<Output = Result<(),
 decrypted and was claimed in the `DedupStore`. Make it idempotent on the
 message id: delivery is at least once (a crashed holder's claim is released
 when its lease expires). `?` converts any error into a `Reject`.
+`msg.evidence().record_id()` is the id the audit sink stores this leg under,
+with its receipt.
 
 Each payload's `mime_type()` is the `MimeType` part property of its signed
 `eb:PartInfo`, else `application/octet-stream`; `properties()` returns the
@@ -180,8 +210,8 @@ fn endpoint(as4: &As4, store: impl DedupStore) -> Inbound {
 | Decryption failed (any cause, one indistinguishable answer) | HTTP 400 + `EBMS:0102` | no | — |
 | Attachment digest mismatch | HTTP 400 + `EBMS:0101` | no | — |
 | Decompression failed, or output above `max_message_bytes` | HTTP 400 + `EBMS:0303` | no | — |
-| Test-service message | HTTP 200 + signed receipt | no | — |
-| Duplicate (`Claim::Duplicate`) | HTTP 200 + a fresh signed receipt | no | unchanged |
+| Test-service message | HTTP 200 + signed receipt (recorded, `accepted`) | no | — |
+| Duplicate (`Claim::Duplicate`) | HTTP 200 + a fresh signed receipt (recorded, `duplicate`) | no | unchanged |
 | In flight (`Claim::InFlight`) | HTTP 503 | no | unchanged |
 | `claim` failed | HTTP 500 + `EBMS:0004` | no | — |
 | Handler `Ok`, audit record and `accept` succeed | HTTP 200 + signed NRR receipt | yes | accepted |

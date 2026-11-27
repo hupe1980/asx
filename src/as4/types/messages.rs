@@ -149,13 +149,17 @@ impl ParsedAs4UserMessage {
             None => return Ok(()),
         };
 
-        let ts_secs = crate::time_utils::parse_rfc3339_to_unix_secs(ts_str).ok_or_else(|| {
-            AsxError::new(
-                ErrorCode::ParseFailed,
-                format!("eb:Timestamp value '{ts_str}' is not a valid RFC 3339 timestamp"),
-                ErrorContext::new("as4_timestamp_freshness"),
-            )
-        })?;
+        let ts_secs = crate::time_utils::parse_xsd_datetime(ts_str)
+            .map(crate::time_utils::unix_secs)
+            .ok_or_else(|| {
+                AsxError::new(
+                    ErrorCode::ParseFailed,
+                    format!(
+                        "eb:Timestamp value '{ts_str}' is not an xsd:dateTime (ebMS3 §5.2.2.1)"
+                    ),
+                    ErrorContext::new("as4_timestamp_freshness"),
+                )
+            })?;
 
         let now_secs = crate::time_utils::unix_secs(now);
         let (ahead, behind) = (ts_secs - now_secs, now_secs - ts_secs);

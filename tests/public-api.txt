@@ -60,6 +60,12 @@ pub mod asx::threat_model
 pub enum asx::AuditDurability
 pub asx::AuditDurability::BestEffort
 pub asx::AuditDurability::Durable
+#[non_exhaustive] pub enum asx::AuditOutcome
+pub asx::AuditOutcome::Accepted
+pub asx::AuditOutcome::Delivered
+pub asx::AuditOutcome::Duplicate
+pub asx::AuditOutcome::Indeterminate
+pub asx::AuditOutcome::PartnerError
 pub enum asx::Claim
 pub asx::Claim::Claimed(asx::ClaimToken)
 pub asx::Claim::Duplicate
@@ -83,8 +89,11 @@ pub asx::SignatureAlgorithm::EcdsaSha256
 pub asx::SignatureAlgorithm::RsaSha256
 #[non_exhaustive] pub struct asx::AuditRecord
 impl asx::AuditRecord
+pub fn asx::AuditRecord::handed_off_at(&self) -> core::option::Option<std::time::SystemTime>
 pub fn asx::AuditRecord::message_id(&self) -> &str
+pub fn asx::AuditRecord::outcome(&self) -> asx::AuditOutcome
 pub fn asx::AuditRecord::partner(&self) -> &str
+pub fn asx::AuditRecord::receipt(&self) -> core::option::Option<asx::Receipt>
 pub fn asx::AuditRecord::record_id(&self) -> &str
 pub fn asx::AuditRecord::signal(&self) -> core::option::Option<&[u8]>
 pub struct asx::Builder<C>
@@ -187,6 +196,9 @@ pub fn asx::Profile::entsog() -> asx::Profile
 pub fn asx::Profile::max_message_bytes(self, u64) -> asx::Profile
 pub fn asx::Profile::peppol() -> asx::Profile
 pub struct asx::Receipt
+impl asx::Receipt
+pub fn asx::Receipt::message_id(&self) -> core::option::Option<&str>
+pub fn asx::Receipt::timestamp(&self) -> core::option::Option<std::time::SystemTime>
 pub struct asx::Reject
 impl asx::Reject
 pub fn asx::Reject::new(impl core::convert::Into<alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>) -> asx::Reject

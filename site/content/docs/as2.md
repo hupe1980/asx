@@ -107,7 +107,7 @@ compressed entity, that of the MIME entity inside the CompressedData.
 | Unsigned or unencrypted | MDN `processed/error: insufficient-message-security` | no | — |
 | Decryption failed (one answer for every cause) | MDN `processed/error: decryption-failed` | no | — |
 | Decompression failed, or the compressed content is not a MIME entity | MDN `processed/error: decompression-failed` | no | — |
-| Duplicate `(AS2-From, Message-ID)` | MDN `processed/warning: duplicate-document` | no | unchanged |
+| Duplicate `(AS2-From, Message-ID)` | MDN `processed/warning: duplicate-document` (recorded, `duplicate`) | no | unchanged |
 | In flight | HTTP 503 | no | unchanged |
 | `claim` failed | HTTP 500, no MDN | no | — |
 | Handler `Ok`, audit record and `accept` succeed | signed MDN `processed` with the MIC | yes | accepted |

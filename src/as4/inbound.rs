@@ -128,11 +128,16 @@ impl As4Inbound {
         };
         let message_id = verified.parsed.message_id.clone();
 
-        // The test service is receipted, never delivered or claimed.
+        // The test service is receipted and recorded, never delivered or
+        // claimed.
         if verified.parsed.service.as_deref() == Some(TEST_SERVICE)
             && verified.parsed.action == TEST_ACTION
         {
-            let response = match self.receipt(&verified).await {
+            let builder = self.leg_builder(&verified);
+            let response = match self
+                .issue_and_record(&verified, builder, AuditOutcome::Accepted)
+                .await
+            {
                 Ok(receipt) => with_body(StatusCode::OK, SOAP, receipt),
                 Err(err) => return self.backend_failure(&message_id, err),
             };
@@ -151,8 +156,13 @@ impl As4Inbound {
         let token = match self.dedup.claim(&key).await {
             Ok(Claim::Claimed(token)) => token,
             Ok(Claim::Duplicate) => {
-                // A verified duplicate gets a fresh signed receipt.
-                let response = match self.receipt(&verified).await {
+                // A verified duplicate gets a fresh signed receipt, recorded
+                // like the first: the sender may hold only this one.
+                let builder = self.leg_builder(&verified);
+                let response = match self
+                    .issue_and_record(&verified, builder, AuditOutcome::Duplicate)
+                    .await
+                {
                     Ok(receipt) => with_body(StatusCode::OK, SOAP, receipt),
                     Err(err) => return self.backend_failure(&message_id, err),
                 };
@@ -181,11 +191,12 @@ impl As4Inbound {
         self.deliver(verified, key, token).await
     }
 
-    async fn deliver(&self, verified: VerifiedInbound, key: String, token: ClaimToken) -> Answer {
+    /// The record builder of one authenticated inbound leg. Its `record_id`
+    /// is minted here, so the handler's record and the stored one share it.
+    fn leg_builder(&self, verified: &VerifiedInbound) -> RecordBuilder {
         let config = self.client.config();
         let parsed = &verified.parsed;
-        let message_id = parsed.message_id.clone();
-        let builder = RecordBuilder::new(
+        RecordBuilder::new(
             &config.clock,
             Protocol::As4,
             Direction::Inbound,
@@ -204,9 +215,54 @@ impl As4Inbound {
                 .references
                 .iter()
                 .map(|(uri, alg, digest)| (uri.as_str(), alg.as_str(), digest.as_str())),
-        );
+        )
+    }
+
+    /// Sign a fresh receipt, record it with `outcome` (its id and timestamp
+    /// as on the wire), then return it. Nothing leaves unrecorded: a durable
+    /// sink failure is an `Err` for the retryable storage failure.
+    async fn issue_and_record(
+        &self,
+        verified: &VerifiedInbound,
+        builder: RecordBuilder,
+        outcome: AuditOutcome,
+    ) -> Result<Vec<u8>, String> {
+        let config = self.client.config();
+        let issued = self.receipt(verified).await?;
+        let record = builder
+            .signal(crate::audit::Signal {
+                bytes: &issued.bytes,
+                message_id: Some(&issued.message_id),
+                ref_to_message_id: Some(&verified.parsed.message_id),
+                timestamp: Some(&issued.timestamp),
+                signed: true,
+                nrr: &[],
+            })
+            .disposition(Some("receipt"))
+            .finish(outcome, None)
+            .map_err(|err| err.to_string())?;
+        crate::audit::record(
+            config.audit.as_deref().map(|s| s as _),
+            &record,
+            "as4_inbound_audit",
+        )
+        .await
+        .map_err(|err| err.to_string())?;
+        Ok(issued.bytes)
+    }
+
+    async fn deliver(&self, verified: VerifiedInbound, key: String, token: ClaimToken) -> Answer {
+        let config = self.client.config();
+        let parsed = &verified.parsed;
+        let message_id = parsed.message_id.clone();
+        // One clock read: the handoff instant is the handler record's
+        // `recorded_at` and the stored record's `handed_off_at`.
+        let handed_off = config.clock.now();
+        let builder = self.leg_builder(&verified).handed_off(handed_off);
         let (record, signer) = match (
-            builder.clone().finish(AuditOutcome::Accepted, None),
+            builder
+                .clone()
+                .finish_at(AuditOutcome::Accepted, None, handed_off),
             Certificate::from_der(&verified.signer_der),
         ) {
             (Ok(record), Ok(signer)) => (record, signer),
@@ -251,38 +307,16 @@ impl As4Inbound {
         .await;
         match answer {
             Ok(()) => {
-                let receipt = match self.receipt(&verified).await {
+                let receipt = match self
+                    .issue_and_record(&verified, builder, AuditOutcome::Accepted)
+                    .await
+                {
                     Ok(receipt) => receipt,
                     Err(err) => {
                         self.abandon(&key, &token).await;
                         return self.backend_failure(&message_id, err);
                     }
                 };
-                let finished = builder
-                    .signal(crate::audit::Signal {
-                        bytes: &receipt,
-                        message_id: None,
-                        ref_to_message_id: Some(&message_id),
-                        timestamp: None,
-                        signed: true,
-                        nrr: &[],
-                    })
-                    .finish(AuditOutcome::Accepted, None);
-                let written = match &finished {
-                    Ok(record) => {
-                        crate::audit::record(
-                            config.audit.as_deref().map(|s| s as _),
-                            record,
-                            "as4_inbound_audit",
-                        )
-                        .await
-                    }
-                    Err(err) => Err(err.clone()),
-                };
-                if let Err(err) = written {
-                    self.abandon(&key, &token).await;
-                    return self.backend_failure(&message_id, err.to_string());
-                }
                 if let Err(err) = self.dedup.accept(&key, &token).await {
                     // No abandon: the current holder, if any, settles.
                     return self
@@ -474,14 +508,17 @@ impl As4Inbound {
         unreachable!("the loop returns on its second pass")
     }
 
-    /// A fresh signed NRR receipt for a verified message.
-    async fn receipt(&self, verified: &VerifiedInbound) -> Result<Vec<u8>, String> {
+    /// A fresh signed NRR receipt for a verified message, with its
+    /// `eb:MessageId` and `eb:Timestamp` exactly as written.
+    async fn receipt(&self, verified: &VerifiedInbound) -> Result<IssuedReceipt, String> {
         let config = self.client.config();
         let signer = &config.local.signer_ref().signer;
         let algorithm = config.profile.signature_algorithm();
         let receipt_id = super::client::fresh_message_id().map_err(|e| e.to_string())?;
+        // One clock read for the wire and the record.
+        let now = config.clock.now();
         let draft = super::signals::draft_receipt(
-            config.clock.now(),
+            now,
             &receipt_id,
             &verified.parsed.message_id,
             &verified.nri,
@@ -504,8 +541,23 @@ impl As4Inbound {
                 crate::crypto::wssec::WsSecOutboundKeyInfoProfile::BinarySecurityTokenX509v3
             }
         };
-        super::signals::finish_signal(draft, raw, &chain, key_info).map_err(|e| e.to_string())
+        let bytes = super::signals::finish_signal(draft, raw, &chain, key_info)
+            .map_err(|e| e.to_string())?;
+        Ok(IssuedReceipt {
+            bytes,
+            message_id: receipt_id,
+            timestamp: crate::time_utils::format_rfc3339_millis(now),
+        })
     }
+}
+
+/// A receipt the library signed: the bytes and the identity written in them.
+struct IssuedReceipt {
+    bytes: Vec<u8>,
+    /// `eb:MessageInfo/eb:MessageId`.
+    message_id: String,
+    /// `eb:MessageInfo/eb:Timestamp`, the string `draft_receipt` wrote.
+    timestamp: String,
 }
 
 fn error_body(

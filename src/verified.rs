@@ -8,9 +8,9 @@ use crate::keys::Certificate;
 /// revocation, replay window, decryption and digests passed. There is no
 /// public constructor.
 ///
-/// ```compile_fail
-/// // Only the library creates a `Verified`.
-/// let forged = asx::Verified::new(asx::Receipt::default());
+/// ```compile_fail,E0624
+/// // Only the library creates a `Verified`: the constructor is private.
+/// let _forge = asx::Verified::<u8>::new;
 /// ```
 pub struct Verified<T> {
     inner: T,
@@ -37,11 +37,15 @@ impl<T> Verified<T> {
         &self.signer
     }
 
-    /// The audit record of this leg, exactly as handed to the `AuditSink`. For
-    /// a receipt or MDN it carries the verified signal bytes
-    /// ([`AuditRecord::signal`]); for an inbound message the receipt is not
-    /// yet issued, so `signal()` is `None` until the record the sink receives
-    /// after `accept`.
+    /// The audit record of this leg.
+    ///
+    /// On send, the record the `AuditSink` received, with the partner's
+    /// receipt or MDN. In a handler, the record at handoff: no signal yet,
+    /// `recorded_at` equal to [`handed_off_at`](AuditRecord::handed_off_at).
+    /// The sink later stores the final record, with the issued receipt, under
+    /// the same [`record_id`](AuditRecord::record_id). Do not write this one to
+    /// the sink yourself: the sink is idempotent on `record_id` and would keep
+    /// it instead.
     pub fn evidence(&self) -> &AuditRecord {
         &self.evidence
     }
@@ -70,33 +74,61 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Verified<T> {
     }
 }
 
-/// A partner's acknowledgement: AS4 `eb:Receipt` or AS2 MDN (`processed`).
-/// Read it through [`Verified`]: the evidence carries the bytes.
-#[derive(Debug, Clone)]
+/// A positive acknowledgement: an AS4 `eb:Receipt` or an AS2 `processed` MDN.
+///
+/// `As4::send` and `As2::send` return the partner's as `Verified<Receipt>`;
+/// [`AuditRecord::receipt`] returns the same value from the stored record, on
+/// the send side and for the receipts the library issues on receive. Its
+/// values are read from the verified, signed signal only.
+///
+/// Under GPKE Teil 1 Kap. 7 the time of receipt (ÜZ) is taken from the
+/// positive AS4 receipt: [`timestamp`](Self::timestamp). It is a UTC instant;
+/// converting it to German legal time and counting days is the caller's.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Receipt {
-    #[allow(dead_code)]
-    ref_to_message_id: String,
-    #[allow(dead_code)]
-    kind: ReceiptKind,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub(crate) enum ReceiptKind {
-    As4,
-    Mdn {
-        disposition: String,
-        warning: Option<String>,
-    },
+    message_id: Option<String>,
+    timestamp: Option<std::time::SystemTime>,
 }
 
 impl Receipt {
-    #[cfg_attr(not(any(feature = "as2", feature = "as4")), allow(dead_code))]
-    pub(crate) fn new(ref_to_message_id: impl Into<String>, kind: ReceiptKind) -> Self {
-        Self {
-            ref_to_message_id: ref_to_message_id.into(),
-            kind,
+    /// The receipt's own message id (AS4 `eb:MessageId`; an issued AS2 MDN's
+    /// `Message-ID`). `None` for a received AS2 MDN, whose `Message-ID` is an
+    /// unsigned header, and for an AS4 receipt that omits it.
+    pub fn message_id(&self) -> Option<&str> {
+        self.message_id.as_deref()
+    }
+
+    /// The receipt's own time, with the wire value's precision (AS4
+    /// `eb:Timestamp`, milliseconds when the library issued it; an issued AS2
+    /// MDN's CMS `signingTime`, whole seconds). `None` for a received AS2 MDN
+    /// and for an AS4 receipt that omits it (only possible with the receipt
+    /// freshness window disabled).
+    pub fn timestamp(&self) -> Option<std::time::SystemTime> {
+        self.timestamp
+    }
+
+    /// The positive receipt a record carries: outcome delivered, accepted or
+    /// duplicate with a signal; `None` otherwise.
+    pub(crate) fn from_record(record: &AuditRecord) -> Option<Self> {
+        use crate::audit::AuditOutcome as O;
+        if !matches!(record.outcome(), O::Delivered | O::Accepted | O::Duplicate) {
+            return None;
         }
+        let (message_id, timestamp) = record.signal_identity()?;
+        Some(Self {
+            message_id: message_id.map(str::to_owned),
+            timestamp: timestamp.and_then(crate::time_utils::parse_xsd_datetime),
+        })
+    }
+
+    /// The receipt of a delivered record; a record without one (which `send`
+    /// never returns) gives an empty receipt rather than a panic.
+    #[cfg_attr(not(any(feature = "as2", feature = "as4")), allow(dead_code))]
+    pub(crate) fn of_delivered(record: &AuditRecord) -> Self {
+        Self::from_record(record).unwrap_or(Self {
+            message_id: None,
+            timestamp: None,
+        })
     }
 }
 

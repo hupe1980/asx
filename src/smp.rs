@@ -91,7 +91,7 @@
 use std::sync::Arc;
 
 use crate::core::{AsxError, ErrorCode, ErrorContext, Result};
-#[cfg(feature = "http-client")]
+#[cfg(any(feature = "http-client", feature = "peppol"))]
 use roxmltree::Document;
 
 pub mod bdxl;

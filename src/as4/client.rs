@@ -9,7 +9,7 @@ use crate::profile::{
     CONFIRM_SWITCH_ACTION, DEFAULT_ACTION, PATH_SWITCH_SERVICE, PartnerPolicy, PartyTypeRule,
     Profile, REQUEST_SWITCH_ACTION, SendHeader, ServiceRule, TEST_ACTION, TEST_SERVICE,
 };
-use crate::verified::{Payload, Receipt, ReceiptKind, Verified};
+use crate::verified::{Payload, Receipt, Verified};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -204,7 +204,16 @@ impl Message {
     }
 
     /// An ebMS3 test-service message (eDelivery AS4 1.15 §3.2.4, BDEW
-    /// Kap. 2.3.6). The receiver answers it with a receipt and never delivers it.
+    /// Kap. 2.3.6). The receiver answers it with a receipt, records it and
+    /// never delivers it. Like every user message it needs a
+    /// [`payload`](Self::payload) (any content: BDEW Kap. 2.3.5 lifts the
+    /// schema rules for test payloads).
+    ///
+    /// ```
+    /// # fn f(partner: &asx::Partner) -> asx::as4::Message {
+    /// asx::as4::Message::ping(partner).payload(asx::Payload::new(&b"ping"[..], "text/plain"))
+    /// # }
+    /// ```
     pub fn ping(partner: &Partner) -> Message {
         Message {
             kind: MessageKind::Ping,
@@ -512,7 +521,7 @@ pub(crate) fn check_message(
         }
         None => fresh_message_id()?,
     };
-    let timestamp = crate::time_utils::format_rfc3339_secs(
+    let timestamp = crate::time_utils::format_rfc3339_millis(
         message.timestamp.unwrap_or_else(|| policy.clock.now()),
     );
     let (from_type, to_type) = match profile.party_types() {
@@ -636,9 +645,11 @@ pub(crate) fn check_validity_at_use(config: &ClientConfig, policy: &PartnerPolic
     Ok(())
 }
 
-/// The receipt value of a verified AS4 receipt.
-pub(crate) fn as4_receipt(ref_to: &str) -> Receipt {
-    Receipt::new(ref_to, ReceiptKind::As4)
+/// The receipt value of a verified AS4 receipt: its id and time, read from
+/// the record the sink received (so `send`'s receipt equals
+/// `evidence().receipt()`).
+pub(crate) fn as4_receipt(record: &crate::AuditRecord) -> Receipt {
+    Receipt::of_delivered(record)
 }
 
 /// Map an internal failure of the inbound side to `Rejected` (used by

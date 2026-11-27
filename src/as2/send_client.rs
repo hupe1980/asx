@@ -13,7 +13,7 @@ use crate::core::{AsxError, ErrorCode, ErrorContext, SessionContext};
 use crate::error::{Error, ErrorKind, Result, Stage};
 use crate::keys::Certificate;
 use crate::profile::{PartnerPolicy, Quirk};
-use crate::verified::{Receipt, ReceiptKind, Verified};
+use crate::verified::{Receipt, Verified};
 use bytes::Bytes;
 use std::sync::Arc;
 
@@ -359,10 +359,9 @@ fn close_span(
 
 /// The verdict on one MDN, before the audit record is written.
 enum Verdict {
-    Delivered {
-        disposition: String,
-        warning: Option<String>,
-    },
+    /// `processed` (or `processed/warning`) with the expected MIC; the
+    /// disposition text is in the record.
+    Delivered,
     Refused {
         disposition: String,
     },
@@ -475,15 +474,7 @@ fn check_mdn(
         }
     } else if processed && matches!(modifier.as_deref(), None | Some("warning")) {
         match parsed.received_content_mic.as_deref() {
-            Some(actual) if mic_values_match(actual, expected_mic) => Verdict::Delivered {
-                warning: (modifier.is_some()).then(|| {
-                    action
-                        .split_once(':')
-                        .map(|(_, w)| w.trim().to_string())
-                        .unwrap_or_default()
-                }),
-                disposition: action,
-            },
+            Some(actual) if mic_values_match(actual, expected_mic) => Verdict::Delivered,
             Some(_) => Verdict::Indeterminate(verify_failed(
                 "the MDN Received-Content-MIC does not match the MIC of the sent message",
             )),
@@ -648,10 +639,7 @@ async fn verify_mdn_inner(
         None => Ok(()),
     };
     match checked.verdict {
-        Verdict::Delivered {
-            disposition,
-            warning,
-        } => {
+        Verdict::Delivered => {
             let Some(record) = record else {
                 return Err(Error::new(
                     ErrorKind::Indeterminate,
@@ -682,13 +670,7 @@ async fn verify_mdn_inner(
                 .with_evidence(Some(record.clone()))
             })?;
             Ok(Verified::new(
-                Receipt::new(
-                    expected_id,
-                    ReceiptKind::Mdn {
-                        disposition,
-                        warning,
-                    },
-                ),
+                Receipt::of_delivered(&record),
                 signer,
                 record,
             ))
@@ -764,7 +746,7 @@ fn mdn_record(
         builder = builder.mic(algorithm, value);
     }
     let (outcome, error_kind) = match &checked.verdict {
-        Verdict::Delivered { .. } => (AuditOutcome::Delivered, None),
+        Verdict::Delivered => (AuditOutcome::Delivered, None),
         Verdict::Refused { .. } => (AuditOutcome::PartnerError, Some("partner_error")),
         Verdict::Indeterminate(_) => (AuditOutcome::Indeterminate, Some("indeterminate")),
     };
